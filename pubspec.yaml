@@ -1,0 +1,61 @@
+name: base_app
+description: "BASE — мобильное приложение для монтажа видео (MVP)."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.5.1
+
+  # Firebase
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
+  firebase_storage: ^12.3.4
+
+  # Навигация
+  go_router: ^14.2.7
+
+  # Работа с медиа (импорт из галереи)
+  image_picker: ^1.1.2
+
+  # Локальный доступ к файлам проекта / экспорт в галерею
+  path_provider: ^2.1.4
+  gal: ^2.3.0 # сохранение экспортированного видео в галерею устройства
+
+  # Модель проекта / value equality
+  equatable: ^2.0.5
+  uuid: ^4.5.1
+  intl: ^0.19.0
+
+  # Иконки/шрифты
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/fonts/
+
+  # Единственный встроенный шрифт приложения (согласно ТЗ — без доп. шрифтов
+  # в текстовом инструменте редактора; здесь — шрифт интерфейса).
+  # Файл шрифта нужно добавить в assets/fonts/ (см. README раздел "Шрифты").
+  # fonts:
+  #   - family: BaseSans
+  #     fonts:
+  #       - asset: assets/fonts/BaseSans-Regular.ttf
+  #       - asset: assets/fonts/BaseSans-Medium.ttf
+  #         weight: 500
