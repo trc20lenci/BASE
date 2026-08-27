@@ -24,6 +24,7 @@ dependencies:
 
   # Работа с медиа (импорт из галереи)
   image_picker: ^1.1.2
+  video_player: ^2.9.2
 
   # Локальный доступ к файлам проекта / экспорт в галерею
   path_provider: ^2.1.4
@@ -33,6 +34,7 @@ dependencies:
   equatable: ^2.0.5
   uuid: ^4.5.1
   intl: ^0.19.0
+  collection: ^1.18.0
 
   # Иконки/шрифты
   cupertino_icons: ^1.0.8

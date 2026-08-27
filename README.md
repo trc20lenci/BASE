@@ -4,12 +4,12 @@ Flutter-приложение для Android и iOS. Этот репозитор�
 поэтапно, строго по плану из ТЗ:
 
 - [x] **Этап 1. Структура проекта** — Clean Architecture, Feature-First, Riverpod
-- [x] **Этап 2. Все экраны (UI)** — Splash, Login/Register/Forgot Password, Home, Profile, Create Project, Editor (заготовка), Export (заготовка)
+- [x] **Этап 2. Все экраны (UI)** — Splash, Login/Register/Forgot Password, Home, Profile, Create Project, Editor, Export
 - [x] **Этап 3. Навигация** — go_router с redirect по состоянию авторизации
 - [x] **Этап 4. Подключение Firebase** — Auth, Firestore, Storage (код готов, ключи проекта нужно сгенерировать — см. ниже)
 - [x] **Этап 5. Работа с проектами** — создание/переименование/удаление/дублирование через Firestore
-- [ ] **Этап 6. Редактор** — таймлайн, импорт медиа, обрезка/разделение, холст, текст — *в разработке*
-- [ ] **Этап 7. Экспорт** — рендер MP4 720p/1080p, сохранение в галерею — *в разработке*
+- [x] **Этап 6. Редактор** — таймлайн (фото/видео), импорт из галереи, обрезка/разделение видео, холст (перемещение/масштаб/поворот/кадрирование), текст
+- [~] **Этап 7. Экспорт** — UI, выбор качества (720p/1080p), сохранение в галерею готовы; сам движок рендера MP4 — см. раздел "Экспорт видео: важное ограничение" ниже
 
 ## Архитектура
 
@@ -75,6 +75,48 @@ flutterfire configure
 - Firestore Database (коллекции `users`, `projects` создаются
   автоматически при первом использовании)
 - Storage (пути `avatars/{userId}.jpg`, `exports/{userId}/{projectId}.mp4`)
+
+## Экспорт видео: важное ограничение
+
+Экран экспорта (выбор качества 720p/1080p, прогресс, сохранение в
+галерею через пакет `gal`) полностью реализован. Единственное, что
+сознательно оставлено подключаемым модулем — сам **движок рендера**
+итогового MP4 (`VideoExportEngine` в
+`lib/features/export/domain/repositories/video_export_engine.dart`).
+
+Почему: наиболее очевидный кандидат для рендера видео на устройстве —
+`ffmpeg_kit_flutter` — официально свёрнут автором (репозиторий
+`arthenica/ffmpeg-kit` заброшен), поэтому закладывать его в архитектуру
+нового проекта на старте — плохое решение. Вместо этого:
+
+1. Зафиксирован чистый контракт `VideoExportEngine.render(...)`.
+2. Весь остальной MVP (UI, таймлайн, трансформации, сохранение в
+   галерею) уже вызывает этот контракт и полностью готов к работе.
+3. Когда будет выбрана актуальная библиотека кодирования видео
+   (актуальный форк ffmpeg-kit на момент разработки, либо нативный
+   MediaCodec/AVFoundation-пайплайн), нужно реализовать интерфейс и
+   подставить реализацию в `videoExportEngineProvider`
+   (`lib/features/export/presentation/providers/export_providers.dart`)
+   — без изменений в остальном коде.
+
+## Разрешения (Android/iOS)
+
+Для импорта фото/видео из галереи и сохранения экспортированного видео
+нужно добавить в нативные проекты:
+
+**Android** (`android/app/src/main/AndroidManifest.xml`):
+```xml
+<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+```
+
+**iOS** (`ios/Runner/Info.plist`):
+```xml
+<key>NSPhotoLibraryUsageDescription</key>
+<string>BASE нужен доступ к галерее для импорта фото и видео в проект</string>
+<key>NSPhotoLibraryAddUsageDescription</key>
+<string>BASE сохраняет готовое видео в вашу галерею</string>
+```
 
 ## Дефолтный аватар и шрифт
 
