@@ -34,7 +34,8 @@ ios/.symlinks/
 # macOS
 .DS_Store
 
-# Firebase — реальные ключи не должны попадать в публичный репозиторий
-android/app/google-services.json
-ios/Runner/GoogleService-Info.plist
-lib/firebase_options_real.dart
+# Supabase — реальные ключи проекта не должны попадать в публичный
+# репозиторий, если решите хранить их в .env вместо --dart-define
+.env
+.env.*
+lib/core/config/supabase_config_real.dart

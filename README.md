@@ -6,10 +6,14 @@ Flutter-приложение для Android и iOS. Этот репозитор�
 - [x] **Этап 1. Структура проекта** — Clean Architecture, Feature-First, Riverpod
 - [x] **Этап 2. Все экраны (UI)** — Splash, Login/Register/Forgot Password, Home, Profile, Create Project, Editor, Export
 - [x] **Этап 3. Навигация** — go_router с redirect по состоянию авторизации
-- [x] **Этап 4. Подключение Firebase** — Auth, Firestore, Storage (код готов, ключи проекта нужно сгенерировать — см. ниже)
-- [x] **Этап 5. Работа с проектами** — создание/переименование/удаление/дублирование через Firestore
+- [x] **Этап 4. Подключение Supabase** — Auth, PostgreSQL Database, Storage (код готов, ключи проекта нужно сгенерировать — см. ниже)
+- [x] **Этап 5. Работа с проектами** — создание/переименование/удаление/дублирование через PostgreSQL (Supabase)
 - [x] **Этап 6. Редактор** — таймлайн (фото/видео), импорт из галереи, обрезка/разделение видео, холст (перемещение/масштаб/поворот/кадрирование), текст
 - [~] **Этап 7. Экспорт** — UI, выбор качества (720p/1080p), сохранение в галерею готовы; сам движок рендера MP4 — см. раздел "Экспорт видео: важное ограничение" ниже
+
+> **Бэкенд — только Supabase.** Firebase (Auth/Firestore/Storage) в проекте
+> не используется и не подключён ни в коде, ни в зависимостях, ни в
+> нативных конфигурациях Android/iOS.
 
 ## Архитектура
 
@@ -18,29 +22,31 @@ Flutter-приложение для Android и iOS. Этот репозитор�
 ```
 lib/
   core/                      # общее для всего приложения
-    constants/                # цвета, размеры, текстовые стили, ключи Firebase
-    theme/                     # единая тёмная тема (Material 3)
-    routing/                   # go_router + redirect по авторизации
-    widgets/                   # переиспользуемые UI-компоненты
+    config/                    # конфигурация подключения к Supabase
+    constants/                 # цвета, размеры, текстовые стили, таблицы/бакеты Supabase
+    theme/                      # единая тёмная тема (Material 3)
+    routing/                    # go_router + redirect по авторизации
+    widgets/                    # переиспользуемые UI-компоненты
   features/
     <feature>/
-      domain/                  # entities, repository-контракты, usecases
-                                # — НЕ знает про Firebase
-      data/                    # datasources (прямая работа с Firebase),
-                                # models (маппинг Firestore <-> Entity),
-                                # repository-реализации
-      presentation/            # pages (экраны), widgets, riverpod-провайдеры
+      domain/                   # entities, repository-контракты, usecases
+                                 # — НЕ знает про Supabase
+      data/                     # datasources (прямая работа с Supabase),
+                                 # models (маппинг Postgres-строка <-> Entity),
+                                 # repository-реализации
+      presentation/             # pages (экраны), widgets, riverpod-провайдеры
 ```
 
 Почему так:
 
-- **domain не зависит от Firebase** — если в будущем понадобится сменить
-  бэкенд (например, добавить offline-first кэш), это не потребует
-  переписывать usecases и экраны.
+- **domain не зависит от Supabase** — если в будущем понадобится сменить
+  бэкенд, это не потребует переписывать usecases и экраны. Весь
+  Supabase-специфичный код изолирован в `data/datasources`.
 - **Riverpod** выбран из трёх вариантов (Provider/Riverpod/Bloc) как
   наиболее удобный для DI через провайдеры + встроенная поддержка
-  `StreamProvider` для реактивных данных Firestore (список проектов,
-  состояние авторизации) без ручного управления подписками.
+  `StreamProvider` для реактивных данных PostgreSQL через Supabase
+  Realtime (список проектов, состояние авторизации) без ручного
+  управления подписками.
 - **Feature-First** — каждая фича самодостаточна и может развиваться/
   тестироваться независимо; это масштабируется на будущие функции
   (эффекты, переходы и т.д., когда придёт их черёд по ТЗ).
@@ -48,33 +54,50 @@ lib/
 ## Стек
 
 - Flutter / Dart
-- Firebase Authentication, Cloud Firestore, Firebase Storage
+- **Supabase**: Auth (email/пароль), PostgreSQL Database, Storage, Realtime
 - flutter_riverpod — состояние и DI
 - go_router — навигация
 - image_picker — импорт фото/видео из галереи
 - gal — сохранение экспортированного видео в галерею устройства
 
-## Подключение Firebase (для локального запуска)
+## Соответствие сервисов (если ранее ориентировались на Firebase)
 
-`lib/firebase_options.dart` в репозитории — это **заглушка**. Чтобы
-запустить проект:
+| Было бы на Firebase     | В этом проекте — Supabase                                            |
+|--------------------------|------------------------------------------------------------------------|
+| Firebase Authentication  | **Supabase Auth** (email/пароль, `auth.users`)                        |
+| Firestore                 | **PostgreSQL** (таблицы `profiles`, `projects`, `project_timelines`) |
+| Firebase Storage          | **Supabase Storage** (бакеты `avatars`, `project-media`, `exports`)  |
+| Firestore snapshots        | **Supabase Realtime** (`.stream()` на таблице `projects`)            |
 
-```bash
-dart pub global activate flutterfire_cli
-flutterfire configure
-```
+## Подключение Supabase (для локального запуска)
 
-Команда подключится к Firebase-проекту и перезапишет
-`lib/firebase_options.dart` реальными ключами, а также положит
-`google-services.json` / `GoogleService-Info.plist` в нужные папки
-(они в `.gitignore` и не должны коммититься с реальными ключами
-в публичный репозиторий).
+1. Создайте проект на [supabase.com](https://supabase.com).
+2. В **SQL Editor** выполните целиком файл [`supabase/schema.sql`](supabase/schema.sql)
+   из этого репозитория — он создаёт все таблицы, RLS-политики и три
+   Storage-бакета (`avatars`, `project-media`, `exports`) одной командой.
+3. В **Project Settings → API** скопируйте `Project URL` и `anon public` ключ.
+4. Передайте их в приложение одним из двух способов:
 
-Также нужно включить в Firebase Console:
-- Authentication → Email/Password
-- Firestore Database (коллекции `users`, `projects` создаются
-  автоматически при первом использовании)
-- Storage (пути `avatars/{userId}.jpg`, `exports/{userId}/{projectId}.mp4`)
+   **Вариант А — через `--dart-define` (рекомендуется, ключи не попадают в git):**
+   ```bash
+   flutter run \
+     --dart-define=SUPABASE_URL=https://xxxxx.supabase.co \
+     --dart-define=SUPABASE_ANON_KEY=eyJхxxxxx...
+   ```
+
+   **Вариант Б — напрямую в `lib/core/config/supabase_config.dart`:**
+   замените значения `defaultValue` в `SupabaseConfig.url` и
+   `SupabaseConfig.anonKey` на реальные (файл — заглушка, см. комментарий
+   в нём про то, почему `anon key` не является секретом).
+5. В **Authentication → Providers** убедитесь, что Email-провайдер включён
+   (включён по умолчанию). Для восстановления пароля по email настройте
+   SMTP или используйте встроенный (ограниченный по лимитам) почтовый
+   сервис Supabase — раздел **Authentication → Email Templates**.
+
+Приватность данных обеспечивается не секретностью `anon key`, а
+политиками **Row Level Security**, уже прописанными в `schema.sql`:
+каждый пользователь видит и меняет только свои профиль/проекты/таймлайны/
+файлы.
 
 ## Экспорт видео: важное ограничение
 
@@ -83,6 +106,8 @@ flutterfire configure
 сознательно оставлено подключаемым модулем — сам **движок рендера**
 итогового MP4 (`VideoExportEngine` в
 `lib/features/export/domain/repositories/video_export_engine.dart`).
+Это решение не связано с выбором Supabase/Firebase — рендер видео
+происходит на устройстве, а не на бэкенде.
 
 Почему: наиболее очевидный кандидат для рендера видео на устройстве —
 `ffmpeg_kit_flutter` — официально свёрнут автором (репозиторий
@@ -98,6 +123,11 @@ flutterfire configure
    подставить реализацию в `videoExportEngineProvider`
    (`lib/features/export/presentation/providers/export_providers.dart`)
    — без изменений в остальном коде.
+
+Бакет `exports` в Supabase Storage зарезервирован на случай, если в
+будущем рендер переедет на сервер (например, в Supabase Edge Function);
+сейчас он не используется, т.к. экспорт сохраняется локально на
+устройство через `gal`.
 
 ## Разрешения (Android/iOS)
 
@@ -122,7 +152,7 @@ flutterfire configure
 
 - Положите файл стандартного аватара в `assets/images/default_avatar.png`
   (путь уже подключён в `pubspec.yaml` и используется в
-  `FirebaseConstants.defaultAvatarAsset`).
+  `SupabaseConstants.defaultAvatarAsset`).
 - Для единственного шрифта текстового инструмента в редакторе (этап 6)
   положите `.ttf` в `assets/fonts/` — константа шрифта будет добавлена
   вместе с реализацией инструмента "Текст".

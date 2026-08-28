@@ -4,7 +4,7 @@ enum AppButtonVariant { primary, outlined, text }
 
 /// Кнопка с встроенным состоянием загрузки — используется во всех формах
 /// (вход/регистрация/восстановление/создание проекта и т.д.), чтобы не
-/// дублировать логику "показать спиннер, пока идёт запрос к Firebase".
+/// дублировать логику "показать спиннер, пока идёт запрос к Supabase".
 class AppButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;

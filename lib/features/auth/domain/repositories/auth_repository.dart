@@ -3,7 +3,7 @@ import '../entities/user_entity.dart';
 /// Контракт репозитория авторизации.
 ///
 /// Domain-слой описывает ЧТО нужно приложению, а КАК это реализовано
-/// (через firebase_auth) знает только data-слой (см. AuthRepositoryImpl).
+/// (через Supabase Auth) знает только data-слой (см. AuthRepositoryImpl).
 abstract class AuthRepository {
   Stream<UserEntity?> authStateChanges();
 

@@ -1,7 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/routing/route_names.dart';
@@ -44,8 +44,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           );
       // Успешный вход обработает go_router redirect через
       // authStateChangesProvider — отдельный context.go здесь не нужен.
-    } on FirebaseAuthException catch (e) {
-      setState(() => _errorText = _mapFirebaseError(e));
+    } on AuthException catch (e) {
+      setState(() => _errorText = _mapAuthError(e));
     } catch (_) {
       setState(() => _errorText = 'Не удалось войти. Попробуйте ещё раз.');
     } finally {
@@ -53,18 +53,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     }
   }
 
-  String _mapFirebaseError(FirebaseAuthException e) {
+  String _mapAuthError(AuthException e) {
     switch (e.code) {
-      case 'user-not-found':
-      case 'wrong-password':
-      case 'invalid-credential':
+      case 'invalid_credentials':
         return 'Неверный email или пароль.';
-      case 'invalid-email':
-        return 'Некорректный формат email.';
-      case 'too-many-requests':
+      case 'email_not_confirmed':
+        return 'Email ещё не подтверждён — проверьте почту.';
+      case 'over_request_rate_limit':
+      case 'over_email_send_rate_limit':
         return 'Слишком много попыток. Попробуйте позже.';
       default:
-        return 'Ошибка входа: ${e.message ?? e.code}';
+        return 'Ошибка входа: ${e.message}';
     }
   }
 

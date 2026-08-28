@@ -4,8 +4,8 @@ import '../repositories/auth_repository.dart';
 /// Usecase: регистрация нового пользователя.
 ///
 /// Согласно ТЗ при регистрации создаётся уникальный ID пользователя и
-/// данные сохраняются в Firebase — это делает AuthRepositoryImpl
-/// (создаёт Firebase Auth пользователя и документ в Firestore).
+/// данные сохраняются в Supabase — это делает AuthRepositoryImpl
+/// (создаёт пользователя в Supabase Auth и строку в таблице profiles).
 class SignUpUseCase {
   final AuthRepository repository;
 

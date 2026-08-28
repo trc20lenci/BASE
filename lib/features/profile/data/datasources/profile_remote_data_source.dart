@@ -1,46 +1,51 @@
 import 'dart:io';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import '../../../../core/constants/firebase_constants.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as sb;
+import '../../../../core/constants/supabase_constants.dart';
 
-/// Работа с профилем на уровне Firebase: обновление username и
-/// загрузка/смена аватара в Firebase Storage.
+/// Работа с профилем на уровне Supabase: обновление username в таблице
+/// `profiles` и загрузка/смена аватара в Supabase Storage (бакет `avatars`).
 class ProfileRemoteDataSource {
-  final FirebaseFirestore _firestore;
-  final FirebaseStorage _storage;
+  final sb.SupabaseClient _client;
 
-  ProfileRemoteDataSource({
-    FirebaseFirestore? firestore,
-    FirebaseStorage? storage,
-  })  : _firestore = firestore ?? FirebaseFirestore.instance,
-        _storage = storage ?? FirebaseStorage.instance;
+  ProfileRemoteDataSource({sb.SupabaseClient? client})
+      : _client = client ?? sb.Supabase.instance.client;
 
-  /// Загружает файл аватара в Storage по пути avatars/{userId}.jpg,
-  /// затем сохраняет полученный downloadUrl в документ пользователя
-  /// в Firestore, и возвращает этот URL.
+  /// Загружает файл аватара в бакет `avatars` по пути {userId}.jpg
+  /// (с перезаписью — upsert), затем сохраняет публичный URL в строку
+  /// профиля пользователя, и возвращает этот URL.
   Future<String> uploadAvatar({
     required String userId,
     required File imageFile,
   }) async {
-    final ref = _storage.ref(FirebaseConstants.avatarPath(userId));
-    await ref.putFile(imageFile);
-    final downloadUrl = await ref.getDownloadURL();
+    final path = SupabaseConstants.avatarPath(userId);
 
-    await _firestore
-        .collection(FirebaseConstants.usersCollection)
-        .doc(userId)
-        .update({'avatarUrl': downloadUrl});
+    await _client.storage.from(SupabaseConstants.avatarsBucket).upload(
+          path,
+          imageFile,
+          fileOptions: const sb.FileOptions(upsert: true, contentType: 'image/jpeg'),
+        );
 
-    return downloadUrl;
+    final publicUrl = _client.storage.from(SupabaseConstants.avatarsBucket).getPublicUrl(path);
+
+    // Добавляем query-параметр с меткой времени, чтобы обойти кэш CDN/
+    // Image.network при смене аватара по тому же пути.
+    final cacheBustedUrl = '$publicUrl?updated=${DateTime.now().millisecondsSinceEpoch}';
+
+    await _client
+        .from(SupabaseConstants.profilesTable)
+        .update({'avatar_url': cacheBustedUrl})
+        .eq('id', userId);
+
+    return cacheBustedUrl;
   }
 
   Future<void> updateUsername({
     required String userId,
     required String username,
   }) {
-    return _firestore
-        .collection(FirebaseConstants.usersCollection)
-        .doc(userId)
-        .update({'username': username});
+    return _client
+        .from(SupabaseConstants.profilesTable)
+        .update({'username': username})
+        .eq('id', userId);
   }
 }

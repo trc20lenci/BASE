@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,11 +5,12 @@ import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_text_field.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/auth_providers.dart';
 
 /// Экран "Регистрация": Имя пользователя, Email, Пароль.
 /// При регистрации создаётся уникальный ID пользователя и данные
-/// сохраняются в Firebase (см. AuthRemoteDataSource.signUp).
+/// сохраняются в Supabase (см. AuthRemoteDataSource.signUp).
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
 
@@ -56,8 +56,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             password: _passwordController.text,
           );
       // Redirect на Home произойдёт автоматически через authStateChanges.
-    } on FirebaseAuthException catch (e) {
-      setState(() => _errorText = _mapFirebaseError(e));
+    } on AuthException catch (e) {
+      setState(() => _errorText = _mapAuthError(e));
     } catch (_) {
       setState(() => _errorText = 'Не удалось зарегистрироваться. Попробуйте ещё раз.');
     } finally {
@@ -65,16 +65,17 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     }
   }
 
-  String _mapFirebaseError(FirebaseAuthException e) {
+  String _mapAuthError(AuthException e) {
     switch (e.code) {
-      case 'email-already-in-use':
+      case 'user_already_exists':
+      case 'email_exists':
         return 'Этот email уже зарегистрирован.';
-      case 'invalid-email':
-        return 'Некорректный формат email.';
-      case 'weak-password':
+      case 'weak_password':
         return 'Пароль слишком простой.';
+      case 'validation_failed':
+        return 'Некорректный формат email.';
       default:
-        return 'Ошибка регистрации: ${e.message ?? e.code}';
+        return 'Ошибка регистрации: ${e.message}';
     }
   }
 

@@ -7,9 +7,9 @@ abstract class TimelineRepository {
 
   Future<void> saveTimeline(EditorTimelineEntity timeline);
 
-  /// Загружает медиафайл в Firebase Storage и возвращает его downloadUrl.
+  /// Загружает медиафайл в Supabase Storage и возвращает его публичный URL.
   /// [ownerId] и [projectId] определяют путь хранения
-  /// (см. FirebaseConstants.projectMediaFolder).
+  /// (см. SupabaseConstants.projectMediaPath).
   Future<String> uploadClipMedia({
     required String ownerId,
     required String projectId,

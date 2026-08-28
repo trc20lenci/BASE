@@ -1,17 +1,19 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
-import 'firebase_options.dart';
+import 'core/config/supabase_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // firebase_options.dart генерируется командой `flutterfire configure`
-  // локально (см. README, раздел "Подключение Firebase") — она создаёт
-  // реальные ключи проекта для Android/iOS/Web и НЕ должна коммититься
-  // с настоящими продовыми ключами в публичный репозиторий без review.
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Инициализация Supabase — единственный бэкенд приложения (Auth,
+  // PostgreSQL Database, Storage). SupabaseConfig — заглушка с реальными
+  // значениями проекта, см. README, раздел "Подключение Supabase".
+  await Supabase.initialize(
+    url: SupabaseConfig.url,
+    anonKey: SupabaseConfig.anonKey,
+  );
 
   runApp(const ProviderScope(child: BaseApp()));
 }

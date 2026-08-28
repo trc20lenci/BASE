@@ -1,6 +1,6 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/constants/app_text_styles.dart';
@@ -39,8 +39,8 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
             email: _emailController.text.trim(),
           );
       setState(() => _emailSent = true);
-    } on FirebaseAuthException catch (e) {
-      setState(() => _errorText = e.message ?? 'Не удалось отправить письмо.');
+    } on AuthException catch (e) {
+      setState(() => _errorText = e.message);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

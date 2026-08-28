@@ -6,7 +6,7 @@ import '../repositories/auth_repository.dart';
 /// Каждый usecase инкапсулирует один сценарий использования (Single
 /// Responsibility) и не содержит ничего, кроме вызова репозитория —
 /// вся бизнес-валидация полей делается на уровне presentation (форм),
-/// а инфраструктурные ошибки Firebase транслируются репозиторием.
+/// а инфраструктурные ошибки Supabase транслируются репозиторием.
 class SignInUseCase {
   final AuthRepository repository;
 

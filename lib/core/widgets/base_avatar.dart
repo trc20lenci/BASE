@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
-import '../constants/firebase_constants.dart';
+import '../constants/supabase_constants.dart';
 
 /// Аватар пользователя. Если avatarUrl пуст или равен пути дефолтного
 /// ассета — показываем стандартный аватар из assets/images.
@@ -47,7 +47,7 @@ class BaseAvatar extends StatelessWidget {
 
   Widget _defaultAvatar() {
     return Image.asset(
-      FirebaseConstants.defaultAvatarAsset,
+      SupabaseConstants.defaultAvatarAsset,
       fit: BoxFit.cover,
       errorBuilder: (_, __, ___) => const Icon(Icons.person, color: AppColors.textSecondary),
     );

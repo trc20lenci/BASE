@@ -1,7 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../domain/entities/project_entity.dart';
 import '../../domain/entities/project_format.dart';
 
+/// Data-модель проекта — маппинг строки таблицы `projects` (PostgreSQL).
+/// Postgres отдаёт timestamptz как ISO-8601 строку через клиент Supabase,
+/// поэтому парсим через DateTime.parse (в отличие от Firestore Timestamp).
 class ProjectModel extends ProjectEntity {
   const ProjectModel({
     required super.id,
@@ -13,15 +15,15 @@ class ProjectModel extends ProjectEntity {
     super.thumbnailUrl,
   });
 
-  factory ProjectModel.fromMap(String id, Map<String, dynamic> map) {
+  factory ProjectModel.fromMap(Map<String, dynamic> map) {
     return ProjectModel(
-      id: id,
-      ownerId: map['ownerId'] as String,
+      id: map['id'] as String,
+      ownerId: map['owner_id'] as String,
       title: map['title'] as String,
-      createdAt: (map['createdAt'] as Timestamp).toDate(),
-      updatedAt: (map['updatedAt'] as Timestamp).toDate(),
+      createdAt: DateTime.parse(map['created_at'] as String),
+      updatedAt: DateTime.parse(map['updated_at'] as String),
       format: ProjectFormat.fromLabel(map['format'] as String),
-      thumbnailUrl: map['thumbnailUrl'] as String?,
+      thumbnailUrl: map['thumbnail_url'] as String?,
     );
   }
 
@@ -39,12 +41,13 @@ class ProjectModel extends ProjectEntity {
 
   Map<String, dynamic> toMap() {
     return {
-      'ownerId': ownerId,
+      'id': id,
+      'owner_id': ownerId,
       'title': title,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'updatedAt': Timestamp.fromDate(updatedAt),
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
       'format': format.label,
-      'thumbnailUrl': thumbnailUrl,
+      'thumbnail_url': thumbnailUrl,
     };
   }
 }

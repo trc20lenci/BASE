@@ -27,7 +27,7 @@ class _SplashPageState extends ConsumerState<SplashPage> {
   }
 
   Future<void> _resolveDestination() async {
-    // authStateChangesProvider стримит текущее состояние FirebaseAuth.
+    // authStateChangesProvider стримит текущее состояние сессии Supabase.
     // Ждём первое значение (null или User) и решаем маршрут.
     final authState = await ref.read(authStateChangesProvider.future);
 

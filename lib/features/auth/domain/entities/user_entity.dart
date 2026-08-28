@@ -2,11 +2,11 @@ import 'package:equatable/equatable.dart';
 
 /// Доменная сущность пользователя.
 ///
-/// Архитектурное решение: слой domain не знает о Firebase вообще — ни о
-/// firebase_auth.User, ни о Firestore DocumentSnapshot. Это позволяет
+/// Архитектурное решение: слой domain не знает о Supabase вообще — ни о
+/// GoTrue User, ни о структуре таблицы `profiles`. Это позволяет
 /// впоследствии сменить бэкенд без переписывания usecases и UI.
 class UserEntity extends Equatable {
-  final String id; // уникальный ID пользователя (совпадает с Firebase UID)
+  final String id; // уникальный ID пользователя (совпадает с Supabase Auth UUID)
   final String username;
   final String email;
   final String avatarUrl;

@@ -12,15 +12,18 @@ class AuthRepositoryImpl implements AuthRepository {
   Stream<UserEntity?> authStateChanges() {
     // Стримим только изменение факта авторизации (вошёл/вышел).
     // Полный профиль (username/avatarUrl) подтягивается отдельно через
-    // ProfileRepository — так Splash не блокируется ожиданием Firestore.
-    return _remote.authStateChanges.asyncMap((fbUser) async {
-      if (fbUser == null) return null;
-      final model = await _remote.fetchUserByUid(fbUser.uid);
+    // таблицу profiles — так Splash не блокируется лишним ожиданием.
+    return _remote.authStateChanges.asyncMap((sbUser) async {
+      if (sbUser == null) return null;
+      final model = await _remote.fetchProfileByUid(
+        sbUser.id,
+        fallbackEmail: sbUser.email ?? '',
+      );
       return model ??
           UserModel(
-            id: fbUser.uid,
-            username: fbUser.displayName ?? '',
-            email: fbUser.email ?? '',
+            id: sbUser.id,
+            username: '',
+            email: sbUser.email ?? '',
             avatarUrl: '',
           );
     });
@@ -28,12 +31,12 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   UserEntity? get currentUser {
-    final fbUser = _remote.currentFirebaseUser;
-    if (fbUser == null) return null;
+    final sbUser = _remote.currentSupabaseUser;
+    if (sbUser == null) return null;
     return UserEntity(
-      id: fbUser.uid,
-      username: fbUser.displayName ?? '',
-      email: fbUser.email ?? '',
+      id: sbUser.id,
+      username: '',
+      email: sbUser.email ?? '',
       avatarUrl: '',
     );
   }

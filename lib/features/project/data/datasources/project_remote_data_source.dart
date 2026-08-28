@@ -1,28 +1,28 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import 'package:uuid/uuid.dart';
-import '../../../../core/constants/firebase_constants.dart';
+import '../../../../core/constants/supabase_constants.dart';
 import '../../domain/entities/project_format.dart';
 import '../models/project_model.dart';
 
 class ProjectRemoteDataSource {
-  final FirebaseFirestore _firestore;
+  final sb.SupabaseClient _client;
   final Uuid _uuid;
 
-  ProjectRemoteDataSource({FirebaseFirestore? firestore, Uuid? uuid})
-      : _firestore = firestore ?? FirebaseFirestore.instance,
+  ProjectRemoteDataSource({sb.SupabaseClient? client, Uuid? uuid})
+      : _client = client ?? sb.Supabase.instance.client,
         _uuid = uuid ?? const Uuid();
 
-  CollectionReference<Map<String, dynamic>> get _collection =>
-      _firestore.collection(FirebaseConstants.projectsCollection);
-
+  /// Живой список проектов пользователя через Supabase Realtime
+  /// (`.stream()` подписывается на изменения таблицы через Postgres
+  /// логическую репликацию — аналог Firestore snapshots, но поверх
+  /// обычного PostgreSQL).
   Stream<List<ProjectModel>> watchUserProjects(String ownerId) {
-    return _collection
-        .where('ownerId', isEqualTo: ownerId)
-        .orderBy('updatedAt', descending: true)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => ProjectModel.fromMap(doc.id, doc.data()))
-            .toList());
+    return _client
+        .from(SupabaseConstants.projectsTable)
+        .stream(primaryKey: ['id'])
+        .eq('owner_id', ownerId)
+        .order('updated_at', ascending: false)
+        .map((rows) => rows.map(ProjectModel.fromMap).toList());
   }
 
   Future<ProjectModel> createProject({
@@ -42,7 +42,7 @@ class ProjectRemoteDataSource {
       format: format,
     );
 
-    await _collection.doc(id).set(model.toMap());
+    await _client.from(SupabaseConstants.projectsTable).insert(model.toMap());
     return model;
   }
 
@@ -50,14 +50,14 @@ class ProjectRemoteDataSource {
     required String projectId,
     required String newTitle,
   }) {
-    return _collection.doc(projectId).update({
+    return _client.from(SupabaseConstants.projectsTable).update({
       'title': newTitle,
-      'updatedAt': Timestamp.fromDate(DateTime.now()),
-    });
+      'updated_at': DateTime.now().toIso8601String(),
+    }).eq('id', projectId);
   }
 
   Future<void> deleteProject(String projectId) {
-    return _collection.doc(projectId).delete();
+    return _client.from(SupabaseConstants.projectsTable).delete().eq('id', projectId);
   }
 
   Future<ProjectModel> duplicateProject(ProjectModel source) async {
@@ -74,10 +74,10 @@ class ProjectRemoteDataSource {
       thumbnailUrl: source.thumbnailUrl,
     );
 
-    await _collection.doc(id).set(copy.toMap());
+    await _client.from(SupabaseConstants.projectsTable).insert(copy.toMap());
     // Примечание: копирование содержимого таймлайна (медиафайлов в
-    // Storage) будет добавлено вместе с реализацией редактора (этап 6),
-    // когда появится структура хранения клипов проекта.
+    // Storage) — отдельная операция, см. TimelineRepository; на уровне
+    // метаданных проекта дублируется только сама запись.
     return copy;
   }
 }

@@ -2,7 +2,7 @@ import 'dart:io';
 import '../repositories/profile_repository.dart';
 
 /// Usecase: загрузка/смена аватара пользователя.
-/// Возвращает публичный downloadUrl из Firebase Storage.
+/// Возвращает публичный URL из Supabase Storage.
 class UploadAvatarUseCase {
   final ProfileRepository repository;
 

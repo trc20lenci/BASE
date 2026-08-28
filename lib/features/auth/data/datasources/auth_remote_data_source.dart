@@ -1,36 +1,42 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart' as fb;
-import '../../../../core/constants/firebase_constants.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as sb;
+import '../../../../core/constants/supabase_constants.dart';
 import '../models/user_model.dart';
 
 /// Единственное место в приложении, которое напрямую обращается к
-/// firebase_auth и cloud_firestore для операций авторизации.
+/// Supabase Auth и таблице `profiles` для операций авторизации.
 ///
-/// Repository (data-слой) зависит от этого класса, а не наоборот — это
-/// позволяет замокать источник данных в тестах.
+/// Архитектурная заметка: Supabase Auth хранит только учётные данные
+/// (email/пароль/UID), а "профильные" поля из ТЗ (имя пользователя,
+/// аватар) хранятся отдельной строкой в таблице `profiles`, где
+/// `profiles.id` — это тот же UUID, что и `auth.users.id`. Это стандартный
+/// паттерн Supabase (в отличие от Firebase, где кастомные поля обычно
+/// сразу пишут в Firestore-документ пользователя).
 class AuthRemoteDataSource {
-  final fb.FirebaseAuth _auth;
-  final FirebaseFirestore _firestore;
+  final sb.SupabaseClient _client;
 
-  AuthRemoteDataSource({
-    fb.FirebaseAuth? auth,
-    FirebaseFirestore? firestore,
-  })  : _auth = auth ?? fb.FirebaseAuth.instance,
-        _firestore = firestore ?? FirebaseFirestore.instance;
+  AuthRemoteDataSource({sb.SupabaseClient? client})
+      : _client = client ?? sb.Supabase.instance.client;
 
-  Stream<fb.User?> get authStateChanges => _auth.authStateChanges();
+  /// Стрим состояния авторизации Supabase (события signedIn/signedOut/
+  /// tokenRefreshed и т.д.), преобразованный в поток "текущий пользователь".
+  Stream<sb.User?> get authStateChanges =>
+      _client.auth.onAuthStateChange.map((event) => event.session?.user);
 
-  fb.User? get currentFirebaseUser => _auth.currentUser;
+  sb.User? get currentSupabaseUser => _client.auth.currentUser;
 
   Future<UserModel> signIn({
     required String email,
     required String password,
   }) async {
-    final credential = await _auth.signInWithEmailAndPassword(
+    final response = await _client.auth.signInWithPassword(
       email: email,
       password: password,
     );
-    return _fetchUserDocument(credential.user!.uid);
+    final user = response.user;
+    if (user == null) {
+      throw const sb.AuthException('Не удалось выполнить вход.');
+    }
+    return _fetchProfile(user.id, fallbackEmail: user.email ?? email);
   }
 
   Future<UserModel> signUp({
@@ -38,60 +44,61 @@ class AuthRemoteDataSource {
     required String email,
     required String password,
   }) async {
-    // 1. Создаём пользователя в Firebase Authentication.
-    //    Firebase сам генерирует уникальный UID — используем его как
-    //    "уникальный ID пользователя" из ТЗ.
-    final credential = await _auth.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-    final uid = credential.user!.uid;
+    // 1. Создаём пользователя в Supabase Auth. Supabase сам генерирует
+    //    уникальный UUID — используем его как "уникальный ID
+    //    пользователя" из ТЗ.
+    final response = await _client.auth.signUp(email: email, password: password);
+    final user = response.user;
+    if (user == null) {
+      throw const sb.AuthException('Не удалось зарегистрироваться.');
+    }
 
-    // 2. Сохраняем профиль в Firestore.
+    // 2. Сохраняем профиль в таблице profiles.
+    //    upsert (а не insert) — потому что БД-триггер handle_new_user()
+    //    (см. supabase/schema.sql) тоже создаёт пустую строку профиля
+    //    сразу при появлении записи в auth.users как защитная сетка;
+    //    здесь мы досоздаём/дополняем её реальным username.
     final model = UserModel(
-      id: uid,
+      id: user.id,
       username: username,
       email: email,
-      avatarUrl: FirebaseConstants.defaultAvatarAsset,
+      avatarUrl: SupabaseConstants.defaultAvatarAsset,
     );
 
-    await _firestore
-        .collection(FirebaseConstants.usersCollection)
-        .doc(uid)
-        .set(model.toMap());
+    await _client.from(SupabaseConstants.profilesTable).upsert(model.toMap());
 
     return model;
   }
 
   Future<void> sendPasswordResetEmail({required String email}) {
-    return _auth.sendPasswordResetEmail(email: email);
+    return _client.auth.resetPasswordForEmail(email);
   }
 
   Future<void> signOut() {
-    return _auth.signOut();
+    return _client.auth.signOut();
   }
 
-  Future<UserModel> _fetchUserDocument(String uid) async {
-    final doc = await _firestore
-        .collection(FirebaseConstants.usersCollection)
-        .doc(uid)
-        .get();
+  Future<UserModel> _fetchProfile(String uid, {required String fallbackEmail}) async {
+    final row = await _client
+        .from(SupabaseConstants.profilesTable)
+        .select()
+        .eq('id', uid)
+        .maybeSingle();
 
-    if (!doc.exists) {
-      throw StateError(
-        'Документ пользователя не найден в Firestore для uid=$uid',
-      );
+    if (row == null) {
+      throw StateError('Профиль не найден в таблице profiles для id=$uid');
     }
 
-    return UserModel.fromMap({...doc.data()!, 'id': uid});
+    return UserModel.fromMap({...row, 'email': fallbackEmail});
   }
 
-  Future<UserModel?> fetchUserByUid(String uid) async {
-    final doc = await _firestore
-        .collection(FirebaseConstants.usersCollection)
-        .doc(uid)
-        .get();
-    if (!doc.exists) return null;
-    return UserModel.fromMap({...doc.data()!, 'id': uid});
+  Future<UserModel?> fetchProfileByUid(String uid, {String fallbackEmail = ''}) async {
+    final row = await _client
+        .from(SupabaseConstants.profilesTable)
+        .select()
+        .eq('id', uid)
+        .maybeSingle();
+    if (row == null) return null;
+    return UserModel.fromMap({...row, 'email': fallbackEmail});
   }
 }
