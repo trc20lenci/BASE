@@ -1,6 +1,6 @@
 import 'dart:io';
 import '../../../editor/domain/entities/editor_timeline_entity.dart';
-import 'export_quality.dart';
+import '../entities/export_quality.dart';
 
 /// Абстракция движка рендера итогового MP4 из таймлайна проекта.
 ///

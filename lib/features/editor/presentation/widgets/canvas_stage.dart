@@ -232,9 +232,9 @@ class _ClipLayerState extends State<_ClipLayer> {
       child: Transform(
         alignment: Alignment.center,
         transform: Matrix4.identity()
-          ..translate(t.dx, t.dy)
+          ..translateByDouble(t.dx, t.dy, 0, 1)
           ..rotateZ(t.rotation)
-          ..scale(t.scale),
+          ..scaleByDouble(t.scale, t.scale, t.scale, 1),
         child: Stack(
           fit: StackFit.expand,
           children: [

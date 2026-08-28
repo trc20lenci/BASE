@@ -247,13 +247,13 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                 icon: Icons.content_cut,
                 label: 'Обрезка',
                 onTap: isVideoSelected
-                    ? () => _openTrimPanel(context, params, selectedClip.id)
+                    ? () => _openTrimPanel(context, params, selectedClip!.id)
                     : null,
               ),
               ToolbarAction(
                 icon: Icons.crop,
                 label: 'Кадрирование',
-                onTap: isClipSelected ? () => _openCropTool(params, selectedClip.id) : null,
+                onTap: isClipSelected ? () => _openCropTool(params, selectedClip!.id) : null,
               ),
               ToolbarAction(
                 icon: Icons.text_fields,

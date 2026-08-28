@@ -87,7 +87,7 @@ class _TextEditorPanelState extends State<TextEditorPanel> {
           Wrap(
             spacing: AppSizes.sm,
             children: EditorTextStyleConstants.colorSwatches.map((color) {
-              final isSelected = color.value == o.color.value;
+              final isSelected = color.toARGB32() == o.color.toARGB32();
               return GestureDetector(
                 onTap: () => widget.onChanged(color: color),
                 child: Container(

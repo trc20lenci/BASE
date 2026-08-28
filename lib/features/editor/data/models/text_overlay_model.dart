@@ -38,7 +38,7 @@ class TextOverlayModel extends TextOverlayEntity {
       'id': id,
       'text': text,
       'fontSize': fontSize,
-      'color': color.value,
+      'color': color.toARGB32(),
       'dx': dx,
       'dy': dy,
     };

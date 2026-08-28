@@ -11,7 +11,7 @@ import 'app_colors.dart';
 class AppTextStyles {
   AppTextStyles._();
 
-  static TextStyle _base = GoogleFonts.inter();
+  static final TextStyle _base = GoogleFonts.inter();
 
   static TextStyle get h1 => _base.copyWith(
         fontSize: 28,

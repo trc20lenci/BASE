@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "BASE (dev)",
+      "request": "launch",
+      "type": "dart",
+      "args": [
+        "--dart-define=SUPABASE_URL=https://ВАШ_ПРОЕКТ.supabase.co",
+        "--dart-define=SUPABASE_ANON_KEY=ВАШ_ANON_KEY"
+      ]
+    }
+  ]
+}
