@@ -12,9 +12,9 @@ class RouteNames {
   static const String forgotPassword = '/forgot-password';
 
   static const String home = '/home';
-  static const String profile = '/profile';
 
   static const String createProject = '/project/create';
+  static const String mediaPicker = '/media-picker';
   static const String editor = '/editor'; // /editor/:projectId
   static const String export = '/export'; // /export/:projectId
 }

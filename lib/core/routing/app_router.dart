@@ -6,10 +6,10 @@ import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
 import '../../features/auth/presentation/providers/auth_providers.dart';
 import '../../features/editor/presentation/pages/editor_page.dart';
+import '../../features/editor/presentation/pages/media_picker_page.dart';
 import '../../features/export/presentation/pages/export_page.dart';
-import '../../features/home/presentation/pages/home_page.dart';
-import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/project/presentation/pages/create_project_page.dart';
+import '../../features/shell/presentation/pages/main_shell_page.dart';
 import '../../features/splash/presentation/pages/splash_page.dart';
 import 'route_names.dart';
 
@@ -19,6 +19,10 @@ import 'route_names.dart';
 /// а не на локальном флаге в каждом экране — это гарантирует, что
 /// логаут/логин из любого места приложения мгновенно приводит к
 /// правильному экрану, без ручных context.go() россыпью по коду.
+///
+/// /home теперь ведёт на MainShellPage — корневой экран с нижней
+/// навигацией из 5 вкладок (Проекты/Шаблоны/Обучение/Подписка/Я).
+/// Экран профиля стал одной из вкладок и больше не отдельный маршрут.
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateChangesProvider);
 
@@ -54,11 +58,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: RouteNames.forgotPassword,
         builder: (_, __) => const ForgotPasswordPage(),
       ),
-      GoRoute(path: RouteNames.home, builder: (_, __) => const HomePage()),
-      GoRoute(path: RouteNames.profile, builder: (_, __) => const ProfilePage()),
+      GoRoute(path: RouteNames.home, builder: (_, __) => const MainShellPage()),
       GoRoute(
         path: RouteNames.createProject,
         builder: (_, __) => const CreateProjectPage(),
+      ),
+      GoRoute(
+        path: RouteNames.mediaPicker,
+        builder: (_, __) => const MediaPickerPage(),
       ),
       GoRoute(
         path: '${RouteNames.editor}/:projectId',
