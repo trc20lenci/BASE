@@ -51,7 +51,6 @@ class _CreateProjectPageState extends State<CreateProjectPage> with SingleTicker
             TabBar(
               controller: _tabController,
               isScrollable: true,
-              tabAlignment: TabAlignment.center,
               labelColor: AppColors.textPrimary,
               unselectedLabelColor: AppColors.textDisabled,
               indicatorColor: AppColors.textPrimary,
