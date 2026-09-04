@@ -3,6 +3,7 @@ import '../../domain/entities/clip_type.dart';
 import '../../domain/entities/editor_timeline_entity.dart';
 import '../../domain/repositories/timeline_repository.dart';
 import '../datasources/timeline_remote_data_source.dart';
+import '../models/media_overlay_model.dart';
 import '../models/text_overlay_model.dart';
 import '../models/timeline_clip_model.dart';
 
@@ -19,7 +20,9 @@ class TimelineRepositoryImpl implements TimelineRepository {
     }
 
     final clipsRaw = (data['clips'] as List?) ?? [];
-    final textsRaw = (data['textOverlays'] as List?) ?? [];
+    // Ключи в Postgres — snake_case (см. TimelineRemoteDataSource.saveTimeline).
+    final textsRaw = (data['text_overlays'] as List?) ?? [];
+    final overlaysRaw = (data['overlays'] as List?) ?? [];
 
     return EditorTimelineEntity(
       projectId: projectId,
@@ -30,6 +33,10 @@ class TimelineRepositoryImpl implements TimelineRepository {
       textOverlays: textsRaw
           .map((t) => TextOverlayModel.fromMap(Map<String, dynamic>.from(t as Map)))
           .toList(),
+      overlays: overlaysRaw
+          .map((o) => MediaOverlayModel.fromMap(Map<String, dynamic>.from(o as Map)))
+          .toList()
+        ..sort((a, b) => a.order.compareTo(b.order)),
     );
   }
 
@@ -38,8 +45,8 @@ class TimelineRepositoryImpl implements TimelineRepository {
     return _remote.saveTimeline(
       projectId: timeline.projectId,
       clips: timeline.clips.map((c) => TimelineClipModel.fromEntity(c)).toList(),
-      textOverlays:
-          timeline.textOverlays.map((t) => TextOverlayModel.fromEntity(t)).toList(),
+      textOverlays: timeline.textOverlays.map((t) => TextOverlayModel.fromEntity(t)).toList(),
+      overlays: timeline.overlays.map((o) => MediaOverlayModel.fromEntity(o)).toList(),
     );
   }
 

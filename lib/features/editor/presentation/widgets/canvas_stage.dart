@@ -7,6 +7,7 @@ import '../../../project/domain/entities/project_format.dart';
 import '../../domain/entities/canvas_transform.dart';
 import '../../domain/entities/clip_type.dart';
 import '../../domain/entities/editor_text_style_constants.dart';
+import '../../domain/entities/media_overlay_entity.dart';
 import '../../domain/entities/text_overlay_entity.dart';
 import '../../domain/entities/timeline_clip_entity.dart';
 import '../providers/editor_controller.dart';
@@ -184,6 +185,16 @@ class _CanvasStageState extends ConsumerState<CanvasStage> {
                           )
                         else
                           const Center(child: Icon(Icons.movie_creation_outlined, color: AppColors.textDisabled, size: 40)),
+                        for (final mediaOverlay in state.timeline.overlays)
+                          _OverlayLayer(
+                            key: ValueKey(mediaOverlay.id),
+                            overlay: mediaOverlay,
+                            isSelected: state.selectedType == SelectedElementType.overlay && state.selectedId == mediaOverlay.id,
+                            onTap: () => controller.selectOverlay(mediaOverlay.id),
+                            onGestureStart: controller.beginGesture,
+                            onGestureEnd: controller.commitGesture,
+                            onTransformChanged: (t) => controller.updateOverlayTransform(mediaOverlay.id, t),
+                          ),
                         for (final overlay in state.timeline.textOverlays)
                           _TextLayer(
                             key: ValueKey(overlay.id),
@@ -456,6 +467,130 @@ class _TextLayerState extends State<_TextLayer> {
             o.text,
             textAlign: TextAlign.center,
             style: EditorTextStyleConstants.style(fontSize: o.fontSize, color: o.color),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Слой наложения (picture-in-picture) — фото или видео, рисуется поверх
+/// основного клипа. Жест 1-в-1 как у _ClipLayer (перемещение/масштаб/
+/// поворот одним пальцем/двумя пальцами), но без кадрирования — оно
+/// клипу наложения не нужно, у него уже есть свободный масштаб/позиция.
+class _OverlayLayer extends StatefulWidget {
+  final MediaOverlayEntity overlay;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final VoidCallback onGestureStart;
+  final VoidCallback onGestureEnd;
+  final ValueChanged<CanvasTransform> onTransformChanged;
+
+  const _OverlayLayer({
+    super.key,
+    required this.overlay,
+    required this.isSelected,
+    required this.onTap,
+    required this.onGestureStart,
+    required this.onGestureEnd,
+    required this.onTransformChanged,
+  });
+
+  @override
+  State<_OverlayLayer> createState() => _OverlayLayerState();
+}
+
+class _OverlayLayerState extends State<_OverlayLayer> {
+  VideoPlayerController? _videoController;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.overlay.type == ClipType.video && widget.overlay.displayPath != null) {
+      final path = widget.overlay.localPath;
+      final controller = path != null
+          ? VideoPlayerController.file(File(path))
+          : VideoPlayerController.networkUrl(Uri.parse(widget.overlay.remoteUrl!));
+      _videoController = controller
+        ..initialize().then((_) {
+          if (mounted) setState(() {});
+          controller.setLooping(true);
+          controller.setVolume(0); // наложение по умолчанию беззвучное, чтобы не спорить с основной дорожкой
+          controller.play();
+        });
+    }
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    super.dispose();
+  }
+
+  late double _startScale;
+  late double _startRotation;
+  late Offset _startOffset;
+
+  void _onScaleStart(ScaleStartDetails details) {
+    widget.onTap();
+    widget.onGestureStart();
+    final t = widget.overlay.transform;
+    _startScale = t.scale;
+    _startRotation = t.rotation;
+    _startOffset = Offset(t.dx, t.dy);
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails details) {
+    final t = widget.overlay.transform;
+    widget.onTransformChanged(t.copyWith(
+      scale: (_startScale * details.scale).clamp(0.1, 3.0),
+      rotation: _startRotation + details.rotation,
+      dx: _startOffset.dx + details.focalPointDelta.dx,
+      dy: _startOffset.dy + details.focalPointDelta.dy,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.overlay.transform;
+
+    Widget media;
+    if (widget.overlay.type == ClipType.video) {
+      final vc = _videoController;
+      media = (vc != null && vc.value.isInitialized)
+          ? SizedBox(width: 160, height: 160 / vc.value.aspectRatio, child: VideoPlayer(vc))
+          : const SizedBox(width: 160, height: 160, child: ColoredBox(color: Colors.black26));
+    } else {
+      final path = widget.overlay.localPath;
+      final image = path != null
+          ? Image.file(File(path), fit: BoxFit.cover)
+          : (widget.overlay.remoteUrl != null
+              ? Image.network(widget.overlay.remoteUrl!, fit: BoxFit.cover)
+              : const ColoredBox(color: Colors.black26));
+      media = SizedBox(width: 160, height: 160, child: image);
+    }
+
+    return Center(
+      child: GestureDetector(
+        onScaleStart: _onScaleStart,
+        onScaleUpdate: _onScaleUpdate,
+        onScaleEnd: (_) => widget.onGestureEnd(),
+        child: Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..translateByDouble(t.dx, t.dy, 0, 1)
+            ..rotateZ(t.rotation)
+            ..scaleByDouble(t.scale, t.scale, t.scale, 1),
+          child: Opacity(
+            opacity: widget.overlay.opacity,
+            child: Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: widget.isSelected ? Border.all(color: AppColors.accent, width: 2) : null,
+              ),
+              child: media,
+            ),
           ),
         ),
       ),

@@ -9,6 +9,7 @@ import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../project/domain/entities/project_format.dart';
 import '../../../project/presentation/providers/project_providers.dart';
 import '../../domain/entities/clip_type.dart';
+import '../../domain/entities/media_overlay_entity.dart';
 import '../providers/editor_controller.dart';
 import '../providers/editor_state.dart';
 import '../services/media_import_service.dart';
@@ -78,6 +79,36 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     } finally {
       if (mounted) setState(() => _isImporting = false);
     }
+  }
+
+  Future<void> _handleAddOverlay(EditorControllerParams params) async {
+    final choice = await showModalBottomSheet<ClipType>(
+      context: context,
+      backgroundColor: AppColors.surfaceElevated,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('Фото поверх видео'),
+              onTap: () => Navigator.pop(ctx, ClipType.photo),
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam_outlined),
+              title: const Text('Видео поверх видео'),
+              onTap: () => Navigator.pop(ctx, ClipType.video),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null) return;
+
+    final media = choice == ClipType.photo ? await _mediaImport.pickPhoto() : await _mediaImport.pickVideo();
+    if (media == null) return;
+
+    await ref.read(editorControllerProvider(params).notifier).addOverlay(file: media.file, type: media.type);
   }
 
   void _openEditTools(BuildContext context, EditorControllerParams params, String clipId) {
@@ -269,6 +300,15 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                     subtitle: const Text('Скоро — своя дорожка со звуком', style: TextStyle(fontSize: 11)),
                     onTap: _soon,
                   ),
+                  const Divider(height: 1, color: AppColors.divider),
+                  _OverlayTrackRow(
+                    overlays: state.timeline.overlays,
+                    selectedId: state.selectedType == SelectedElementType.overlay ? state.selectedId : null,
+                    onAdd: () => _handleAddOverlay(params),
+                    onSelect: controller.selectOverlay,
+                    onRemove: controller.removeOverlay,
+                  ),
+                  const Divider(height: 1, color: AppColors.divider),
                   ListTile(
                     dense: true,
                     leading: const Icon(Icons.title, color: AppColors.textSecondary, size: 20),
@@ -295,7 +335,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                 }
               },
               onEffects: _soon,
-              onOverlay: _soon,
+              onOverlay: () => _handleAddOverlay(params),
               onSubtitles: _soon,
               onGenerate: _soon,
             ),
@@ -484,6 +524,86 @@ class _BottomToolbar extends StatelessWidget {
                   ),
                 ))
             .toList(),
+      ),
+    );
+  }
+}
+
+/// Дорожка "Наложение" под таймлайном — показывает все добавленные
+/// picture-in-picture слои (по требованию: "все дорожки того, что
+/// добавляешь, должны появляться в дорожке"). Тап — выбрать (можно
+/// двигать/масштабировать на холсте), долгое нажатие — удалить.
+class _OverlayTrackRow extends StatelessWidget {
+  final List<MediaOverlayEntity> overlays;
+  final String? selectedId;
+  final VoidCallback onAdd;
+  final ValueChanged<String> onSelect;
+  final ValueChanged<String> onRemove;
+
+  const _OverlayTrackRow({
+    required this.overlays,
+    required this.selectedId,
+    required this.onAdd,
+    required this.onSelect,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 56,
+      child: Row(
+        children: [
+          const SizedBox(width: AppSizes.md),
+          const Icon(Icons.layers_outlined, color: AppColors.textSecondary, size: 20),
+          const SizedBox(width: AppSizes.sm),
+          if (overlays.isEmpty)
+            Expanded(
+              child: InkWell(
+                onTap: onAdd,
+                child: const Text('Добавить наложение', style: TextStyle(color: AppColors.textSecondary)),
+              ),
+            )
+          else
+            Expanded(
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final o in overlays)
+                    GestureDetector(
+                      onTap: () => onSelect(o.id),
+                      onLongPress: () => onRemove(o.id),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        margin: const EdgeInsets.only(right: AppSizes.xs),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceElevated,
+                          borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                          border: Border.all(color: o.id == selectedId ? AppColors.accent : Colors.transparent, width: 2),
+                        ),
+                        child: Icon(
+                          o.type == ClipType.video ? Icons.videocam_outlined : Icons.image_outlined,
+                          color: AppColors.textSecondary,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  InkWell(
+                    onTap: onAdd,
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(color: const Color(0xFF232323), borderRadius: BorderRadius.circular(AppSizes.radiusSm)),
+                      child: const Icon(Icons.add, color: Colors.white70, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(width: AppSizes.md),
+        ],
       ),
     );
   }

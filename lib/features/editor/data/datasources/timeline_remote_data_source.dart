@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import '../../../../core/constants/supabase_constants.dart';
 import '../../domain/entities/clip_type.dart';
+import '../models/media_overlay_model.dart';
 import '../models/text_overlay_model.dart';
 import '../models/timeline_clip_model.dart';
 
@@ -32,6 +33,7 @@ class TimelineRemoteDataSource {
     required String projectId,
     required List<TimelineClipModel> clips,
     required List<TextOverlayModel> textOverlays,
+    required List<MediaOverlayModel> overlays,
   }) async {
     final now = DateTime.now().toIso8601String();
 
@@ -39,6 +41,7 @@ class TimelineRemoteDataSource {
       'project_id': projectId,
       'clips': clips.map((c) => c.toMap()).toList(),
       'text_overlays': textOverlays.map((t) => t.toMap()).toList(),
+      'overlays': overlays.map((o) => o.toMap()).toList(),
       'updated_at': now,
     });
 

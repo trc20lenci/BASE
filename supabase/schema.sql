@@ -87,8 +87,14 @@ create table if not exists public.project_timelines (
   project_id uuid primary key references public.projects (id) on delete cascade,
   clips jsonb not null default '[]'::jsonb,
   text_overlays jsonb not null default '[]'::jsonb,
+  overlays jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
+
+-- Безопасно для повторного запуска на уже существующей базе (например,
+-- если project_timelines была создана до появления поля overlays).
+alter table public.project_timelines
+  add column if not exists overlays jsonb not null default '[]'::jsonb;
 
 alter table public.project_timelines enable row level security;
 

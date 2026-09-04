@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../domain/entities/canvas_transform.dart';
 import '../../domain/entities/clip_type.dart';
 import '../../domain/entities/editor_timeline_entity.dart';
+import '../../domain/entities/media_overlay_entity.dart';
 import '../../domain/entities/text_overlay_entity.dart';
 import '../../domain/entities/timeline_clip_entity.dart';
 import '../../domain/usecases/load_timeline_usecase.dart';
@@ -302,6 +303,67 @@ class EditorController extends StateNotifier<EditorState> {
     _redoStack.clear();
     state = state.copyWith(canUndo: true, canRedo: false);
     _scheduleSave();
+  }
+
+  // ---------------------------------------------------------------------
+  // Наложения (picture-in-picture поверх видео)
+  // ---------------------------------------------------------------------
+
+  /// Добавляет фото/видео как наложение поверх текущего клипа — в
+  /// отличие от addMediaClip, НЕ занимает своё время на дорожке,
+  /// показывается одновременно с уже идущим клипом (см. MediaOverlayEntity).
+  Future<void> addOverlay({required File file, required ClipType type}) async {
+    final id = _uuid.v4();
+    final overlay = MediaOverlayEntity(
+      id: id,
+      type: type,
+      localPath: file.path,
+      order: state.timeline.overlays.length,
+    );
+
+    _commit(state.timeline.copyWith(overlays: [...state.timeline.overlays, overlay]));
+    state = state.copyWith(selectedType: SelectedElementType.overlay, selectedId: id);
+
+    try {
+      final url = await _uploadClipMedia(
+        ownerId: _params.ownerId,
+        projectId: _params.projectId,
+        clipId: id,
+        type: type,
+        file: file,
+      );
+      final stillExists = state.timeline.overlays.any((o) => o.id == id);
+      if (!stillExists) return;
+
+      final updated =
+          state.timeline.overlays.map((o) => o.id == id ? o.copyWith(remoteUrl: url) : o).toList();
+      state = state.copyWith(timeline: state.timeline.copyWith(overlays: updated));
+      _scheduleSave();
+    } catch (_) {
+      // Загрузка не удалась — наложение продолжает работать локально.
+    }
+  }
+
+  void removeOverlay(String overlayId) {
+    final updated = state.timeline.overlays.where((o) => o.id != overlayId).toList();
+    _commit(state.timeline.copyWith(overlays: updated));
+    if (state.selectedId == overlayId) {
+      state = state.copyWith(clearSelection: true);
+    }
+  }
+
+  /// Трансформация наложения тоже идёт через begin/commitGesture (см.
+  /// CanvasStage) — здесь только применяем изменение без лишних шагов
+  /// истории на каждый кадр жеста.
+  void updateOverlayTransform(String overlayId, CanvasTransform transform) {
+    final updated = state.timeline.overlays
+        .map((o) => o.id == overlayId ? o.copyWith(transform: transform) : o)
+        .toList();
+    state = state.copyWith(timeline: state.timeline.copyWith(overlays: updated));
+  }
+
+  void selectOverlay(String overlayId) {
+    state = state.copyWith(selectedType: SelectedElementType.overlay, selectedId: overlayId);
   }
 
   // ---------------------------------------------------------------------

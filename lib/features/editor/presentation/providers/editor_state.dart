@@ -3,7 +3,7 @@ import '../../domain/entities/editor_timeline_entity.dart';
 
 /// Что именно сейчас выбрано на холсте — влияет на то, какая панель
 /// инструментов активна (трансформация клипа или трансформация текста).
-enum SelectedElementType { none, clip, text }
+enum SelectedElementType { none, clip, text, overlay }
 
 class EditorState extends Equatable {
   final EditorTimelineEntity timeline;
