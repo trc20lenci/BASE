@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../editor/domain/entities/editor_timeline_entity.dart';
 import '../../data/services/unimplemented_export_engine.dart';
 import '../../domain/entities/export_progress.dart';
-import '../../domain/entities/export_quality.dart';
+import '../../domain/entities/export_settings.dart';
 import '../../domain/repositories/video_export_engine.dart';
 import '../../domain/usecases/render_video_usecase.dart';
 import '../../domain/usecases/save_video_to_gallery_usecase.dart';
@@ -31,13 +31,13 @@ class ExportController extends StateNotifier<ExportProgress> {
 
   Future<void> exportAndSave({
     required EditorTimelineEntity timeline,
-    required ExportQuality quality,
+    required ExportSettings settings,
   }) async {
     state = const ExportProgress(status: ExportStatus.rendering, progress: 0);
     try {
       final file = await _render(
         timeline: timeline,
-        quality: quality,
+        settings: settings,
         onProgress: (p) => state = state.copyWith(progress: p),
       );
 

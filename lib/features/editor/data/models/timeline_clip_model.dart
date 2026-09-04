@@ -13,6 +13,10 @@ class TimelineClipModel extends TimelineClipEntity {
     required super.trimStartMs,
     required super.trimEndMs,
     super.transform,
+    super.keyframes,
+    super.volume,
+    super.isMuted,
+    super.speed,
   });
 
   factory TimelineClipModel.fromEntity(TimelineClipEntity e) {
@@ -26,6 +30,10 @@ class TimelineClipModel extends TimelineClipEntity {
       trimStartMs: e.trimStartMs,
       trimEndMs: e.trimEndMs,
       transform: e.transform,
+      keyframes: e.keyframes,
+      volume: e.volume,
+      isMuted: e.isMuted,
+      speed: e.speed,
     );
   }
 
@@ -41,6 +49,13 @@ class TimelineClipModel extends TimelineClipEntity {
       transform: map['transform'] != null
           ? CanvasTransform.fromMap(Map<String, dynamic>.from(map['transform'] as Map))
           : CanvasTransform.identity,
+      keyframes: (map['keyframes'] as List?)
+              ?.map((k) => KeyframeEntity.fromMap(Map<String, dynamic>.from(k as Map)))
+              .toList() ??
+          const [],
+      volume: (map['volume'] as num?)?.toDouble() ?? 1.0,
+      isMuted: map['isMuted'] as bool? ?? false,
+      speed: (map['speed'] as num?)?.toDouble() ?? 1.0,
     );
   }
 
@@ -56,6 +71,10 @@ class TimelineClipModel extends TimelineClipEntity {
       'trimStartMs': trimStartMs,
       'trimEndMs': trimEndMs,
       'transform': transform.toMap(),
+      'keyframes': keyframes.map((k) => k.toMap()).toList(),
+      'volume': volume,
+      'isMuted': isMuted,
+      'speed': speed,
     };
   }
 }

@@ -17,6 +17,16 @@ class EditorState extends Equatable {
   /// (соответствует позиции плейхеда на таймлайне).
   final int playheadClipIndex;
 
+  /// Позиция плейхеда внутри текущего клипа, в мс от начала обрезанного
+  /// диапазона (используется для перемотки и разделения по факту, а не
+  /// только "пополам").
+  final int playheadPositionMs;
+
+  final bool isPlaying;
+
+  final bool canUndo;
+  final bool canRedo;
+
   const EditorState({
     required this.timeline,
     this.isLoading = true,
@@ -24,6 +34,10 @@ class EditorState extends Equatable {
     this.selectedType = SelectedElementType.none,
     this.selectedId,
     this.playheadClipIndex = 0,
+    this.playheadPositionMs = 0,
+    this.isPlaying = false,
+    this.canUndo = false,
+    this.canRedo = false,
   });
 
   factory EditorState.initial(String projectId) {
@@ -38,6 +52,10 @@ class EditorState extends Equatable {
     String? selectedId,
     bool clearSelection = false,
     int? playheadClipIndex,
+    int? playheadPositionMs,
+    bool? isPlaying,
+    bool? canUndo,
+    bool? canRedo,
   }) {
     return EditorState(
       timeline: timeline ?? this.timeline,
@@ -46,10 +64,24 @@ class EditorState extends Equatable {
       selectedType: clearSelection ? SelectedElementType.none : (selectedType ?? this.selectedType),
       selectedId: clearSelection ? null : (selectedId ?? this.selectedId),
       playheadClipIndex: playheadClipIndex ?? this.playheadClipIndex,
+      playheadPositionMs: playheadPositionMs ?? this.playheadPositionMs,
+      isPlaying: isPlaying ?? this.isPlaying,
+      canUndo: canUndo ?? this.canUndo,
+      canRedo: canRedo ?? this.canRedo,
     );
   }
 
   @override
-  List<Object?> get props =>
-      [timeline, isLoading, isSaving, selectedType, selectedId, playheadClipIndex];
+  List<Object?> get props => [
+        timeline,
+        isLoading,
+        isSaving,
+        selectedType,
+        selectedId,
+        playheadClipIndex,
+        playheadPositionMs,
+        isPlaying,
+        canUndo,
+        canRedo,
+      ];
 }

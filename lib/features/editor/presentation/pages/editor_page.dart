@@ -14,18 +14,14 @@ import '../providers/editor_state.dart';
 import '../services/media_import_service.dart';
 import '../widgets/canvas_stage.dart';
 import '../widgets/crop_tool.dart';
+import '../widgets/edit_tools_sheet.dart';
 import '../widgets/text_editor_panel.dart';
 import '../widgets/timeline_track.dart';
 import '../widgets/trim_panel.dart';
 
 /// Экран редактора — верстка повторяет референсный макет: тёмная шапка
-/// (закрыть / поиск / промо-плашка / качество / Экспорт), окно
-/// предпросмотра, таймлайн с колонкой быстрых иконок слева и дорожками
-/// аудио/текста, нижний тулбар инструментов.
-///
-/// Функционал (движок редактирования — EditorController/CanvasStage) не
-/// менялся, переработана только "обвязка" — расположение элементов и
-/// набор иконок, чтобы совпадать с макетом.
+/// (закрыть / поиск / AI UHD / Экспорт), окно предпросмотра со встроенной
+/// перемоткой/play-pause (см. CanvasStage), таймлайн, нижний тулбар.
 class EditorPage extends ConsumerStatefulWidget {
   final String projectId;
 
@@ -84,42 +80,28 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     }
   }
 
-  void _openEditTools(BuildContext context, EditorControllerParams params, String clipId, bool isVideo) {
+  void _openEditTools(BuildContext context, EditorControllerParams params, String clipId) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surfaceElevated,
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isVideo)
-                ListTile(
-                  leading: const Icon(Icons.content_cut),
-                  title: const Text('Обрезка / разделение'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _openTrimPanel(context, params, clipId);
-                  },
-                ),
-              ListTile(
-                leading: const Icon(Icons.crop),
-                title: const Text('Кадрирование'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  await _openCropTool(params, clipId);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: AppColors.error),
-                title: const Text('Удалить клип', style: TextStyle(color: AppColors.error)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  ref.read(editorControllerProvider(params).notifier).removeClip(clipId);
-                },
-              ),
-            ],
-          ),
+        return Consumer(
+          builder: (ctx, ref, _) {
+            final state = ref.watch(editorControllerProvider(params));
+            final clip = state.timeline.clips.firstWhereOrNull((c) => c.id == clipId);
+            if (clip == null) return const SizedBox.shrink();
+
+            final controller = ref.read(editorControllerProvider(params).notifier);
+            return EditToolsSheet(
+              clip: clip,
+              onSplit: controller.splitSelectedClipAtPlayhead,
+              onVolumeChanged: (v) => controller.setClipVolume(clipId, v),
+              onDelete: () => controller.removeClip(clipId),
+              onSpeedChanged: (s) => controller.setClipSpeed(clipId, s),
+              onSoon: _soon,
+              onClose: () => Navigator.pop(ctx),
+            );
+          },
         );
       },
     );
@@ -143,8 +125,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
               onTrimStart: (ms) => controller.trimClipStart(clipId, ms),
               onTrimEnd: (ms) => controller.trimClipEnd(clipId, ms),
               onSplit: () {
-                final midpoint = (clip.trimStartMs + clip.trimEndMs) ~/ 2;
-                controller.splitClip(clipId, midpoint);
+                controller.splitSelectedClipAtPlayhead();
                 Navigator.pop(ctx);
               },
               onClose: () => Navigator.pop(ctx),
@@ -216,6 +197,8 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator()));
     }
 
+    final clips = state.timeline.clips;
+    final currentClip = clips.isEmpty ? null : clips[state.playheadClipIndex.clamp(0, clips.length - 1)];
     final selectedClip = state.selectedType == SelectedElementType.clip
         ? state.timeline.clips.firstWhereOrNull((c) => c.id == state.selectedId)
         : null;
@@ -227,7 +210,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
           children: [
             _TopBar(
               isSaving: state.isSaving,
-              hasClips: state.timeline.clips.isNotEmpty,
+              hasClips: clips.isNotEmpty,
               onClose: () => context.go(RouteNames.home),
               onSoon: _soon,
               onExport: () => context.push('${RouteNames.export}/${widget.projectId}'),
@@ -238,7 +221,16 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                 child: CanvasStage(params: params, format: format),
               ),
             ),
-            _PlaybackRow(onSoon: _soon),
+            _PlaybackRow(
+              canUndo: state.canUndo,
+              canRedo: state.canRedo,
+              onUndo: controller.undo,
+              onRedo: controller.redo,
+              onSoon: _soon,
+              currentClipMuted: currentClip?.isMuted ?? false,
+              hasVideoClip: currentClip?.type == ClipType.video,
+              onToggleMute: currentClip == null ? null : () => controller.toggleClipMute(currentClip.id),
+            ),
             Container(
               margin: const EdgeInsets.symmetric(horizontal: AppSizes.md),
               decoration: BoxDecoration(color: const Color(0xFF141414), borderRadius: BorderRadius.circular(AppSizes.radiusMd)),
@@ -249,17 +241,16 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _QuickTimelineIcons(onSoon: _soon),
                         Expanded(
                           child: _isImporting
                               ? const Center(child: CircularProgressIndicator())
                               : TimelineTrack(
-                                  clips: state.timeline.clips,
+                                  clips: clips,
                                   selectedClipId: selectedClip?.id,
                                   playheadClipIndex: state.playheadClipIndex,
                                   onSelectClip: (id) {
                                     controller.selectClip(id);
-                                    final index = state.timeline.clips.indexWhere((c) => c.id == id);
+                                    final index = clips.indexWhere((c) => c.id == id);
                                     if (index != -1) controller.setPlayheadClipIndex(index);
                                   },
                                   onDeleteClip: controller.removeClip,
@@ -275,6 +266,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                     dense: true,
                     leading: const Icon(Icons.music_note_outlined, color: AppColors.textSecondary, size: 20),
                     title: const Text('Добавить аудио', style: TextStyle(color: AppColors.textSecondary)),
+                    subtitle: const Text('Скоро — своя дорожка со звуком', style: TextStyle(fontSize: 11)),
                     onTap: _soon,
                   ),
                   ListTile(
@@ -288,10 +280,11 @@ class _EditorPageState extends ConsumerState<EditorPage> {
             ),
             const SizedBox(height: AppSizes.sm),
             _BottomToolbar(
-              onEdit: selectedClip == null
+              onEdit: selectedClip == null ? _soon : () => _openEditTools(context, params, selectedClip.id),
+              onCrop: selectedClip == null ? _soon : () => _openCropTool(params, selectedClip.id),
+              onTrim: selectedClip == null || selectedClip.type != ClipType.video
                   ? _soon
-                  : () => _openEditTools(context, params, selectedClip.id, selectedClip.type == ClipType.video),
-              onSound: _soon,
+                  : () => _openTrimPanel(context, params, selectedClip.id),
               onText: () {
                 if (state.selectedType == SelectedElementType.text && state.selectedId != null) {
                   _openTextPanel(context, params, state.selectedId!);
@@ -359,10 +352,30 @@ class _TopBar extends StatelessWidget {
   }
 }
 
+/// Строка над таймлайном: полноэкранный режим (заглушка), undo/redo
+/// (реальные, зависят от истории EditorController) и быстрый тумблер
+/// звука текущего клипа (реальный — заменил собой декоративные
+/// "Обложка"/"ИИ-обработка" из прошлой версии).
 class _PlaybackRow extends StatelessWidget {
+  final bool canUndo;
+  final bool canRedo;
+  final VoidCallback onUndo;
+  final VoidCallback onRedo;
   final VoidCallback onSoon;
+  final bool currentClipMuted;
+  final bool hasVideoClip;
+  final VoidCallback? onToggleMute;
 
-  const _PlaybackRow({required this.onSoon});
+  const _PlaybackRow({
+    required this.canUndo,
+    required this.canRedo,
+    required this.onUndo,
+    required this.onRedo,
+    required this.onSoon,
+    required this.currentClipMuted,
+    required this.hasVideoClip,
+    required this.onToggleMute,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -371,57 +384,23 @@ class _PlaybackRow extends StatelessWidget {
       child: Row(
         children: [
           IconButton(onPressed: onSoon, icon: const Icon(Icons.fullscreen, color: Colors.white70, size: 20)),
+          IconButton(
+            onPressed: hasVideoClip ? onToggleMute : null,
+            icon: Icon(
+              currentClipMuted ? Icons.volume_off : Icons.volume_up,
+              color: hasVideoClip ? Colors.white70 : Colors.white24,
+              size: 20,
+            ),
+          ),
           const Spacer(),
-          IconButton(onPressed: onSoon, icon: const Icon(Icons.play_arrow, color: Colors.white, size: 28)),
-          const Spacer(),
-          IconButton(onPressed: onSoon, icon: const Icon(Icons.undo, color: Colors.white70, size: 20)),
-          IconButton(onPressed: onSoon, icon: const Icon(Icons.redo, color: Colors.white70, size: 20)),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickTimelineIcons extends StatelessWidget {
-  final VoidCallback onSoon;
-
-  const _QuickTimelineIcons({required this.onSoon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 64,
-      padding: const EdgeInsets.symmetric(vertical: AppSizes.xs),
-      decoration: const BoxDecoration(border: Border(right: BorderSide(color: AppColors.divider))),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _MiniIcon(icon: Icons.volume_off_outlined, label: 'Звук клипа', onTap: onSoon),
-          _MiniIcon(icon: Icons.auto_fix_high, label: 'ИИ-обрезка', onTap: onSoon),
-          _MiniIcon(icon: Icons.edit_note, label: 'Обложка', onTap: onSoon),
-        ],
-      ),
-    );
-  }
-}
-
-class _MiniIcon extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _MiniIcon({required this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white54, size: 16),
-          const SizedBox(height: 2),
-          Text(label, style: const TextStyle(fontSize: 8, color: Colors.white38), textAlign: TextAlign.center),
+          IconButton(
+            onPressed: canUndo ? onUndo : null,
+            icon: Icon(Icons.undo, color: canUndo ? Colors.white : Colors.white24, size: 20),
+          ),
+          IconButton(
+            onPressed: canRedo ? onRedo : null,
+            icon: Icon(Icons.redo, color: canRedo ? Colors.white : Colors.white24, size: 20),
+          ),
         ],
       ),
     );
@@ -452,7 +431,8 @@ class _AddClipButton extends StatelessWidget {
 
 class _BottomToolbar extends StatelessWidget {
   final VoidCallback onEdit;
-  final VoidCallback onSound;
+  final VoidCallback onCrop;
+  final VoidCallback onTrim;
   final VoidCallback onText;
   final VoidCallback onEffects;
   final VoidCallback onOverlay;
@@ -461,7 +441,8 @@ class _BottomToolbar extends StatelessWidget {
 
   const _BottomToolbar({
     required this.onEdit,
-    required this.onSound,
+    required this.onCrop,
+    required this.onTrim,
     required this.onText,
     required this.onEffects,
     required this.onOverlay,
@@ -473,7 +454,8 @@ class _BottomToolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       (icon: Icons.content_cut, label: 'Изменить', onTap: onEdit),
-      (icon: Icons.music_note_outlined, label: 'Звук', onTap: onSound),
+      (icon: Icons.crop, label: 'Кадрирование', onTap: onCrop),
+      (icon: Icons.timelapse, label: 'Обрезка', onTap: onTrim),
       (icon: Icons.title, label: 'Текст', onTap: onText),
       (icon: Icons.auto_awesome_outlined, label: 'Эффекты', onTap: onEffects),
       (icon: Icons.image_outlined, label: 'Наложение', onTap: onOverlay),

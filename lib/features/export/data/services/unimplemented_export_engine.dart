@@ -1,6 +1,6 @@
 import 'dart:io';
 import '../../../editor/domain/entities/editor_timeline_entity.dart';
-import '../../domain/entities/export_quality.dart';
+import '../../domain/entities/export_settings.dart';
 import '../../domain/repositories/video_export_engine.dart';
 
 /// Реализация "по умолчанию": явно сообщает, что нативный движок рендера
@@ -13,7 +13,7 @@ class UnimplementedExportEngine implements VideoExportEngine {
   @override
   Future<File> render({
     required EditorTimelineEntity timeline,
-    required ExportQuality quality,
+    required ExportSettings settings,
     required void Function(double progress) onProgress,
   }) {
     throw UnimplementedError(

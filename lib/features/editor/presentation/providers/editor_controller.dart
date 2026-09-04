@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../domain/entities/canvas_transform.dart';
 import '../../domain/entities/clip_type.dart';
+import '../../domain/entities/editor_timeline_entity.dart';
 import '../../domain/entities/text_overlay_entity.dart';
 import '../../domain/entities/timeline_clip_entity.dart';
 import '../../domain/usecases/load_timeline_usecase.dart';
@@ -30,18 +31,26 @@ class EditorControllerParams {
 }
 
 /// Вся бизнес-логика редактора: импорт медиа, обрезка/разделение клипов,
-/// трансформация холста, текстовые слои, автосохранение.
+/// трансформация холста, текстовые слои, undo/redo, автосохранение.
 ///
 /// Архитектурное решение: состояние редактора живёт в памяти (StateNotifier)
-/// и сохраняется в Firestore явно — по debounce после каждого изменения и
-/// принудительно при выходе с экрана. Так UI остаётся мгновенно отзывчивым
-/// (drag/resize на холсте не должны ждать сеть), а данные не теряются.
+/// и сохраняется в бэкенд явно — после каждого изменения. Так UI остаётся
+/// мгновенно отзывчивым (drag/resize на холсте не должны ждать сеть).
+///
+/// Undo/redo реализован как стек снимков EditorTimelineEntity (а не как
+/// стек обратных операций) — это проще и надёжнее для MVP: любое
+/// изменение таймлайна коммитится через [_commit], который сам кладёт
+/// предыдущее состояние в undo-стек и чистит redo-стек.
 class EditorController extends StateNotifier<EditorState> {
   final LoadTimelineUseCase _loadTimeline;
   final SaveTimelineUseCase _saveTimeline;
   final UploadClipMediaUseCase _uploadClipMedia;
   final EditorControllerParams _params;
   final _uuid = const Uuid();
+
+  final List<EditorTimelineEntity> _undoStack = [];
+  final List<EditorTimelineEntity> _redoStack = [];
+  static const int _maxHistory = 50;
 
   EditorController({
     required LoadTimelineUseCase loadTimeline,
@@ -59,6 +68,44 @@ class EditorController extends StateNotifier<EditorState> {
   Future<void> _init() async {
     final timeline = await _loadTimeline(_params.projectId);
     state = state.copyWith(timeline: timeline, isLoading: false);
+  }
+
+  /// Единая точка применения любого изменения таймлайна: кладёт текущее
+  /// состояние в undo-стек, чистит redo-стек (стандартное поведение
+  /// undo/redo — новое действие "обнуляет" ветку redo), применяет новое
+  /// состояние и сохраняет.
+  void _commit(EditorTimelineEntity newTimeline) {
+    _undoStack.add(state.timeline);
+    if (_undoStack.length > _maxHistory) _undoStack.removeAt(0);
+    _redoStack.clear();
+    state = state.copyWith(timeline: newTimeline, canUndo: true, canRedo: false);
+    _scheduleSave();
+  }
+
+  void undo() {
+    if (_undoStack.isEmpty) return;
+    final previous = _undoStack.removeLast();
+    _redoStack.add(state.timeline);
+    state = state.copyWith(
+      timeline: previous,
+      canUndo: _undoStack.isNotEmpty,
+      canRedo: true,
+      clearSelection: true,
+    );
+    _scheduleSave();
+  }
+
+  void redo() {
+    if (_redoStack.isEmpty) return;
+    final next = _redoStack.removeLast();
+    _undoStack.add(state.timeline);
+    state = state.copyWith(
+      timeline: next,
+      canUndo: true,
+      canRedo: _redoStack.isNotEmpty,
+      clearSelection: true,
+    );
+    _scheduleSave();
   }
 
   // ---------------------------------------------------------------------
@@ -83,14 +130,12 @@ class EditorController extends StateNotifier<EditorState> {
       trimEndMs: sourceDurationMs,
     );
 
-    state = state.copyWith(
-      timeline: state.timeline.copyWith(clips: [...state.timeline.clips, clip]),
-    );
-    _scheduleSave();
+    _commit(state.timeline.copyWith(clips: [...state.timeline.clips, clip]));
 
-    // Фоновая загрузка — не блокирует UI. По завершении обновляем клип
-    // remoteUrl'ом, если он всё ещё есть на таймлайне (мог быть удалён
-    // пользователем, пока грузился).
+    // Фоновая загрузка — не блокирует UI и не участвует в undo/redo
+    // (это чисто инфраструктурная синхронизация, не творческое решение
+    // пользователя). По завершении обновляем клип remoteUrl'ом напрямую,
+    // минуя _commit.
     try {
       final url = await _uploadClipMedia(
         ownerId: _params.ownerId,
@@ -102,26 +147,26 @@ class EditorController extends StateNotifier<EditorState> {
       final stillExists = state.timeline.clips.any((c) => c.id == id);
       if (!stillExists) return;
 
-      _updateClip(id, (c) => c.copyWith(remoteUrl: url));
+      final updated = state.timeline.clips
+          .map((c) => c.id == id ? c.copyWith(remoteUrl: url) : c)
+          .toList();
+      state = state.copyWith(timeline: state.timeline.copyWith(clips: updated));
       _scheduleSave();
     } catch (_) {
       // Загрузка не удалась — клип продолжает работать локально
       // (localPath), пользователь может продолжать монтаж офлайн.
-      // Повторная попытка происходит при следующем ручном сохранении.
     }
   }
 
   void removeClip(String clipId) {
     final remaining = state.timeline.clips.where((c) => c.id != clipId).toList();
-    // Пересчитываем order, чтобы не было "дыр" в последовательности.
     final reordered = [
       for (var i = 0; i < remaining.length; i++) remaining[i].copyWith(order: i),
     ];
-    state = state.copyWith(
-      timeline: state.timeline.copyWith(clips: reordered),
-      clearSelection: state.selectedId == clipId,
-    );
-    _scheduleSave();
+    _commit(state.timeline.copyWith(clips: reordered));
+    if (state.selectedId == clipId) {
+      state = state.copyWith(clearSelection: true);
+    }
   }
 
   void reorderClips(int oldIndex, int newIndex) {
@@ -134,34 +179,32 @@ class EditorController extends StateNotifier<EditorState> {
       for (var i = 0; i < clips.length; i++) clips[i].copyWith(order: i),
     ];
 
-    state = state.copyWith(timeline: state.timeline.copyWith(clips: reordered));
-    _scheduleSave();
+    _commit(state.timeline.copyWith(clips: reordered));
   }
 
   // ---------------------------------------------------------------------
-  // Работа с видео: обрезка начала/конца, разделение
+  // Работа с видео: обрезка начала/конца, разделение, громкость, скорость
   // ---------------------------------------------------------------------
 
   void trimClipStart(String clipId, int newStartMs) {
-    _updateClip(clipId, (c) {
-      final clamped = newStartMs.clamp(0, c.trimEndMs - 200).toInt(); // минимум 200мс клипа
+    final updated = _mapClips(clipId, (c) {
+      final clamped = newStartMs.clamp(0, c.trimEndMs - 200).toInt();
       return c.copyWith(trimStartMs: clamped);
     });
-    _scheduleSave();
+    _commit(state.timeline.copyWith(clips: updated));
   }
 
   void trimClipEnd(String clipId, int newEndMs) {
-    _updateClip(clipId, (c) {
+    final updated = _mapClips(clipId, (c) {
       final clamped = newEndMs.clamp(c.trimStartMs + 200, c.sourceDurationMs).toInt();
       return c.copyWith(trimEndMs: clamped);
     });
-    _scheduleSave();
+    _commit(state.timeline.copyWith(clips: updated));
   }
 
   /// Разделяет клип на два в точке [atMs] (миллисекунды от начала
-  /// исходного файла, должна лежать строго внутри текущего диапазона
-  /// обрезки клипа). Второй клип получает новый ID и наследует
-  /// трансформацию исходного.
+  /// исходного файла). Второй клип получает новый ID и наследует
+  /// трансформацию/громкость/скорость исходного.
   void splitClip(String clipId, int atMs) {
     final clips = state.timeline.clips;
     final index = clips.indexWhere((c) => c.id == clipId);
@@ -183,6 +226,9 @@ class EditorController extends StateNotifier<EditorState> {
       trimStartMs: atMs,
       trimEndMs: original.trimEndMs,
       transform: original.transform,
+      volume: original.volume,
+      isMuted: original.isMuted,
+      speed: original.speed,
     );
 
     final newClips = [...clips];
@@ -193,16 +239,68 @@ class EditorController extends StateNotifier<EditorState> {
       for (var i = 0; i < newClips.length; i++) newClips[i].copyWith(order: i),
     ];
 
-    state = state.copyWith(timeline: state.timeline.copyWith(clips: reordered));
-    _scheduleSave();
+    _commit(state.timeline.copyWith(clips: reordered));
+  }
+
+  /// Разделяет выбранный клип ровно там, где сейчас стоит плейхед
+  /// предпросмотра (реальное "разделение по позиции", а не только
+  /// "пополам").
+  void splitSelectedClipAtPlayhead() {
+    final clipId = state.selectedId;
+    if (clipId == null || state.selectedType != SelectedElementType.clip) return;
+    final clip = state.timeline.clips.firstWhere((c) => c.id == clipId, orElse: () => state.timeline.clips.first);
+    final atMs = clip.trimStartMs + state.playheadPositionMs;
+    splitClip(clipId, atMs);
+  }
+
+  void setClipVolume(String clipId, double volume) {
+    final updated = _mapClips(clipId, (c) => c.copyWith(volume: volume.clamp(0.0, 1.0)));
+    _commit(state.timeline.copyWith(clips: updated));
+  }
+
+  void toggleClipMute(String clipId) {
+    final clip = state.timeline.clips.firstWhere((c) => c.id == clipId, orElse: () => state.timeline.clips.first);
+    final updated = _mapClips(clipId, (c) => c.copyWith(isMuted: !clip.isMuted));
+    _commit(state.timeline.copyWith(clips: updated));
+  }
+
+  void setClipSpeed(String clipId, double speed) {
+    final updated = _mapClips(clipId, (c) => c.copyWith(speed: speed));
+    _commit(state.timeline.copyWith(clips: updated));
   }
 
   // ---------------------------------------------------------------------
   // Холст: перемещение, масштаб, поворот, кадрирование (фото и видео)
   // ---------------------------------------------------------------------
 
+  /// Обновление трансформации холста НЕ коммитится в undo/redo на каждый
+  /// кадр жеста (иначе один свайп создал бы сотни шагов истории) — только
+  /// напрямую в state. Снимок "до жеста" фиксируется в [beginGesture],
+  /// а сам шаг истории добавляется в [commitGesture] по завершении жеста.
   void updateClipTransform(String clipId, CanvasTransform transform) {
-    _updateClip(clipId, (c) => c.copyWith(transform: transform));
+    final updated = _mapClips(clipId, (c) => c.copyWith(transform: transform));
+    state = state.copyWith(timeline: state.timeline.copyWith(clips: updated));
+  }
+
+  EditorTimelineEntity? _gestureStartTimeline;
+
+  /// Вызывается в начале любого перетаскивания на холсте (трансформация
+  /// клипа, перемещение текста) — запоминает состояние "до", чтобы потом
+  /// положить его в undo-стек одним шагом, а не на каждый пиксель.
+  void beginGesture() {
+    _gestureStartTimeline ??= state.timeline;
+  }
+
+  /// Вызывается по завершении перетаскивания — фиксирует один шаг истории.
+  void commitGesture() {
+    final start = _gestureStartTimeline;
+    _gestureStartTimeline = null;
+    if (start == null || start == state.timeline) return; // ничего не изменилось
+
+    _undoStack.add(start);
+    if (_undoStack.length > _maxHistory) _undoStack.removeAt(0);
+    _redoStack.clear();
+    state = state.copyWith(canUndo: true, canRedo: false);
     _scheduleSave();
   }
 
@@ -212,14 +310,8 @@ class EditorController extends StateNotifier<EditorState> {
 
   void addText() {
     final overlay = TextOverlayEntity(id: _uuid.v4(), text: 'Текст');
-    state = state.copyWith(
-      timeline: state.timeline.copyWith(
-        textOverlays: [...state.timeline.textOverlays, overlay],
-      ),
-      selectedType: SelectedElementType.text,
-      selectedId: overlay.id,
-    );
-    _scheduleSave();
+    _commit(state.timeline.copyWith(textOverlays: [...state.timeline.textOverlays, overlay]));
+    state = state.copyWith(selectedType: SelectedElementType.text, selectedId: overlay.id);
   }
 
   void updateText(
@@ -234,18 +326,18 @@ class EditorController extends StateNotifier<EditorState> {
       if (t.id != textId) return t;
       return t.copyWith(text: text, fontSize: fontSize, color: color, dx: dx, dy: dy);
     }).toList();
-
+    // Перетаскивание текста по холсту коммитится через beginGesture/
+    // commitGesture (см. CanvasStage) — здесь только применяем изменение.
     state = state.copyWith(timeline: state.timeline.copyWith(textOverlays: updated));
     _scheduleSave();
   }
 
   void deleteText(String textId) {
     final updated = state.timeline.textOverlays.where((t) => t.id != textId).toList();
-    state = state.copyWith(
-      timeline: state.timeline.copyWith(textOverlays: updated),
-      clearSelection: state.selectedId == textId,
-    );
-    _scheduleSave();
+    _commit(state.timeline.copyWith(textOverlays: updated));
+    if (state.selectedId == textId) {
+      state = state.copyWith(clearSelection: true);
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -266,7 +358,15 @@ class EditorController extends StateNotifier<EditorState> {
 
   void setPlayheadClipIndex(int index) {
     if (index < 0 || index >= state.timeline.clips.length) return;
-    state = state.copyWith(playheadClipIndex: index);
+    state = state.copyWith(playheadClipIndex: index, playheadPositionMs: 0);
+  }
+
+  void setPlayheadPositionMs(int ms) {
+    state = state.copyWith(playheadPositionMs: ms);
+  }
+
+  void setPlaying(bool playing) {
+    state = state.copyWith(isPlaying: playing);
   }
 
   // ---------------------------------------------------------------------
@@ -274,10 +374,6 @@ class EditorController extends StateNotifier<EditorState> {
   // ---------------------------------------------------------------------
 
   Future<void> _scheduleSave() async {
-    // Простой debounce: сохраняем сразу, но помечаем isSaving, чтобы UI
-    // мог показать индикатор. Для реального продакшена стоит добавить
-    // Timer-debounce на 500-800мс при частых правках (drag на холсте) —
-    // оставлено как заметка для оптимизации после MVP.
     state = state.copyWith(isSaving: true);
     try {
       await _saveTimeline(state.timeline);
@@ -288,12 +384,11 @@ class EditorController extends StateNotifier<EditorState> {
 
   Future<void> saveNow() => _scheduleSave();
 
-  void _updateClip(String clipId, TimelineClipEntity Function(TimelineClipEntity) update) {
-    final updated = state.timeline.clips.map((c) {
-      if (c.id != clipId) return c;
-      return update(c);
-    }).toList();
-    state = state.copyWith(timeline: state.timeline.copyWith(clips: updated));
+  List<TimelineClipEntity> _mapClips(
+    String clipId,
+    TimelineClipEntity Function(TimelineClipEntity) update,
+  ) {
+    return state.timeline.clips.map((c) => c.id == clipId ? update(c) : c).toList();
   }
 }
 
