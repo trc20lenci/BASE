@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import '../../domain/entities/audio_track_entity.dart';
 import '../../domain/entities/canvas_transform.dart';
 import '../../domain/entities/clip_type.dart';
 import '../../domain/entities/editor_timeline_entity.dart';
@@ -10,6 +11,7 @@ import '../../domain/entities/text_overlay_entity.dart';
 import '../../domain/entities/timeline_clip_entity.dart';
 import '../../domain/usecases/load_timeline_usecase.dart';
 import '../../domain/usecases/save_timeline_usecase.dart';
+import '../../domain/usecases/upload_audio_track_usecase.dart';
 import '../../domain/usecases/upload_clip_media_usecase.dart';
 import 'editor_state.dart';
 import 'timeline_di_providers.dart';
@@ -46,6 +48,7 @@ class EditorController extends StateNotifier<EditorState> {
   final LoadTimelineUseCase _loadTimeline;
   final SaveTimelineUseCase _saveTimeline;
   final UploadClipMediaUseCase _uploadClipMedia;
+  final UploadAudioTrackUseCase _uploadAudioTrack;
   final EditorControllerParams _params;
   final _uuid = const Uuid();
 
@@ -57,10 +60,12 @@ class EditorController extends StateNotifier<EditorState> {
     required LoadTimelineUseCase loadTimeline,
     required SaveTimelineUseCase saveTimeline,
     required UploadClipMediaUseCase uploadClipMedia,
+    required UploadAudioTrackUseCase uploadAudioTrack,
     required EditorControllerParams params,
   })  : _loadTimeline = loadTimeline,
         _saveTimeline = saveTimeline,
         _uploadClipMedia = uploadClipMedia,
+        _uploadAudioTrack = uploadAudioTrack,
         _params = params,
         super(EditorState.initial(params.projectId)) {
     _init();
@@ -367,6 +372,59 @@ class EditorController extends StateNotifier<EditorState> {
   }
 
   // ---------------------------------------------------------------------
+  // Аудиодорожка (пользовательская музыка/звук)
+  // ---------------------------------------------------------------------
+
+  Future<void> addAudioTrack({
+    required File file,
+    required String fileName,
+    required int durationMs,
+  }) async {
+    final id = _uuid.v4();
+    final track = AudioTrackEntity(
+      id: id,
+      localPath: file.path,
+      order: state.timeline.audioTracks.length,
+      fileName: fileName,
+      durationMs: durationMs,
+    );
+
+    _commit(state.timeline.copyWith(audioTracks: [...state.timeline.audioTracks, track]));
+
+    try {
+      final extension = fileName.contains('.') ? fileName.split('.').last : 'mp3';
+      final url = await _uploadAudioTrack(
+        ownerId: _params.ownerId,
+        projectId: _params.projectId,
+        trackId: id,
+        extension: extension,
+        file: file,
+      );
+      final stillExists = state.timeline.audioTracks.any((a) => a.id == id);
+      if (!stillExists) return;
+
+      final updated =
+          state.timeline.audioTracks.map((a) => a.id == id ? a.copyWith(remoteUrl: url) : a).toList();
+      state = state.copyWith(timeline: state.timeline.copyWith(audioTracks: updated));
+      _scheduleSave();
+    } catch (_) {
+      // Загрузка не удалась — дорожка продолжает работать локально.
+    }
+  }
+
+  void removeAudioTrack(String trackId) {
+    final updated = state.timeline.audioTracks.where((a) => a.id != trackId).toList();
+    _commit(state.timeline.copyWith(audioTracks: updated));
+  }
+
+  void setAudioTrackVolume(String trackId, double volume) {
+    final updated = state.timeline.audioTracks
+        .map((a) => a.id == trackId ? a.copyWith(volume: volume.clamp(0.0, 1.0)) : a)
+        .toList();
+    _commit(state.timeline.copyWith(audioTracks: updated));
+  }
+
+  // ---------------------------------------------------------------------
   // Текст
   // ---------------------------------------------------------------------
 
@@ -460,6 +518,7 @@ final editorControllerProvider = StateNotifierProvider.family<EditorController, 
     loadTimeline: ref.watch(loadTimelineUseCaseProvider),
     saveTimeline: ref.watch(saveTimelineUseCaseProvider),
     uploadClipMedia: ref.watch(uploadClipMediaUseCaseProvider),
+    uploadAudioTrack: ref.watch(uploadAudioTrackUseCaseProvider),
     params: params,
   );
 });

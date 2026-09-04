@@ -17,4 +17,14 @@ abstract class TimelineRepository {
     required ClipType type,
     required File file,
   });
+
+  /// Загружает пользовательский аудиофайл (наложенный звук/музыка) и
+  /// возвращает публичный URL.
+  Future<String> uploadAudioTrack({
+    required String ownerId,
+    required String projectId,
+    required String trackId,
+    required String extension,
+    required File file,
+  });
 }

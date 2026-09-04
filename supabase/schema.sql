@@ -88,13 +88,17 @@ create table if not exists public.project_timelines (
   clips jsonb not null default '[]'::jsonb,
   text_overlays jsonb not null default '[]'::jsonb,
   overlays jsonb not null default '[]'::jsonb,
+  audio_tracks jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
 
 -- Безопасно для повторного запуска на уже существующей базе (например,
--- если project_timelines была создана до появления поля overlays).
+-- если project_timelines была создана до появления полей overlays/
+-- audio_tracks).
 alter table public.project_timelines
   add column if not exists overlays jsonb not null default '[]'::jsonb;
+alter table public.project_timelines
+  add column if not exists audio_tracks jsonb not null default '[]'::jsonb;
 
 alter table public.project_timelines enable row level security;
 

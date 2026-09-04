@@ -4,6 +4,7 @@ import '../../data/repositories/timeline_repository_impl.dart';
 import '../../domain/repositories/timeline_repository.dart';
 import '../../domain/usecases/load_timeline_usecase.dart';
 import '../../domain/usecases/save_timeline_usecase.dart';
+import '../../domain/usecases/upload_audio_track_usecase.dart';
 import '../../domain/usecases/upload_clip_media_usecase.dart';
 
 final timelineRemoteDataSourceProvider = Provider<TimelineRemoteDataSource>((ref) {
@@ -24,4 +25,8 @@ final saveTimelineUseCaseProvider = Provider<SaveTimelineUseCase>((ref) {
 
 final uploadClipMediaUseCaseProvider = Provider<UploadClipMediaUseCase>((ref) {
   return UploadClipMediaUseCase(ref.watch(timelineRepositoryProvider));
+});
+
+final uploadAudioTrackUseCaseProvider = Provider<UploadAudioTrackUseCase>((ref) {
+  return UploadAudioTrackUseCase(ref.watch(timelineRepositoryProvider));
 });

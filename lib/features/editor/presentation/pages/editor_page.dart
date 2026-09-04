@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:collection/collection.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +10,7 @@ import '../../../../core/routing/route_names.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../project/domain/entities/project_format.dart';
 import '../../../project/presentation/providers/project_providers.dart';
+import '../../domain/entities/audio_track_entity.dart';
 import '../../domain/entities/clip_type.dart';
 import '../../domain/entities/media_overlay_entity.dart';
 import '../providers/editor_controller.dart';
@@ -79,6 +82,24 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     } finally {
       if (mounted) setState(() => _isImporting = false);
     }
+  }
+
+  Future<void> _handleAddAudio(EditorControllerParams params) async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.audio, withData: false);
+    final path = result?.files.single.path;
+    if (path == null) return;
+
+    final fileName = result!.files.single.name;
+    // file_picker не даёт длительность аудио напрямую — для отображения на
+    // дорожке точная длительность не критична (реальное воспроизведение/
+    // микширование всё равно ещё не подключено, см. AudioTrackEntity),
+    // поэтому используем плейсхолдер и уточняем его позже, если понадобится
+    // реальная синхронизация со временем ролика.
+    await ref.read(editorControllerProvider(params).notifier).addAudioTrack(
+          file: File(path),
+          fileName: fileName,
+          durationMs: 0,
+        );
   }
 
   Future<void> _handleAddOverlay(EditorControllerParams params) async {
@@ -293,12 +314,11 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                     ),
                   ),
                   const Divider(height: 1, color: AppColors.divider),
-                  ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.music_note_outlined, color: AppColors.textSecondary, size: 20),
-                    title: const Text('Добавить аудио', style: TextStyle(color: AppColors.textSecondary)),
-                    subtitle: const Text('Скоро — своя дорожка со звуком', style: TextStyle(fontSize: 11)),
-                    onTap: _soon,
+                  _AudioTrackRow(
+                    tracks: state.timeline.audioTracks,
+                    onAdd: () => _handleAddAudio(params),
+                    onRemove: controller.removeAudioTrack,
+                    onVolumeChanged: controller.setAudioTrackVolume,
                   ),
                   const Divider(height: 1, color: AppColors.divider),
                   _OverlayTrackRow(
@@ -336,6 +356,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
               },
               onEffects: _soon,
               onOverlay: () => _handleAddOverlay(params),
+              onSound: () => _handleAddAudio(params),
               onSubtitles: _soon,
               onGenerate: _soon,
             ),
@@ -476,6 +497,7 @@ class _BottomToolbar extends StatelessWidget {
   final VoidCallback onText;
   final VoidCallback onEffects;
   final VoidCallback onOverlay;
+  final VoidCallback onSound;
   final VoidCallback onSubtitles;
   final VoidCallback onGenerate;
 
@@ -486,6 +508,7 @@ class _BottomToolbar extends StatelessWidget {
     required this.onText,
     required this.onEffects,
     required this.onOverlay,
+    required this.onSound,
     required this.onSubtitles,
     required this.onGenerate,
   });
@@ -497,6 +520,7 @@ class _BottomToolbar extends StatelessWidget {
       (icon: Icons.crop, label: 'Кадрирование', onTap: onCrop),
       (icon: Icons.timelapse, label: 'Обрезка', onTap: onTrim),
       (icon: Icons.title, label: 'Текст', onTap: onText),
+      (icon: Icons.music_note_outlined, label: 'Звук', onTap: onSound),
       (icon: Icons.auto_awesome_outlined, label: 'Эффекты', onTap: onEffects),
       (icon: Icons.image_outlined, label: 'Наложение', onTap: onOverlay),
       (icon: Icons.subtitles_outlined, label: 'Субтитры', onTap: onSubtitles),
@@ -597,6 +621,134 @@ class _OverlayTrackRow extends StatelessWidget {
                       height: 40,
                       decoration: BoxDecoration(color: const Color(0xFF232323), borderRadius: BorderRadius.circular(AppSizes.radiusSm)),
                       child: const Icon(Icons.add, color: Colors.white70, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(width: AppSizes.md),
+        ],
+      ),
+    );
+  }
+}
+
+/// Дорожка "Аудио" под таймлайном — показывает добавленные пользователем
+/// звуковые файлы. Тап по треку открывает регулировку громкости, долгое
+/// нажатие — удаляет трек.
+class _AudioTrackRow extends StatelessWidget {
+  final List<AudioTrackEntity> tracks;
+  final VoidCallback onAdd;
+  final ValueChanged<String> onRemove;
+  final void Function(String trackId, double volume) onVolumeChanged;
+
+  const _AudioTrackRow({
+    required this.tracks,
+    required this.onAdd,
+    required this.onRemove,
+    required this.onVolumeChanged,
+  });
+
+  void _openVolumeSheet(BuildContext context, AudioTrackEntity track) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      builder: (ctx) {
+        double volume = track.volume;
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.all(AppSizes.md),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(track.fileName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Row(
+                    children: [
+                      const Icon(Icons.volume_mute, color: Colors.white38, size: 18),
+                      Expanded(
+                        child: Slider(
+                          min: 0,
+                          max: 1,
+                          value: volume,
+                          activeColor: AppColors.accent,
+                          inactiveColor: Colors.white24,
+                          onChanged: (v) {
+                            setSheetState(() => volume = v);
+                            onVolumeChanged(track.id, v);
+                          },
+                        ),
+                      ),
+                      const Icon(Icons.volume_up, color: Colors.white38, size: 18),
+                    ],
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      onRemove(track.id);
+                      Navigator.pop(ctx);
+                    },
+                    icon: const Icon(Icons.delete_outline, color: AppColors.error),
+                    label: const Text('Удалить трек', style: TextStyle(color: AppColors.error)),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 44,
+      child: Row(
+        children: [
+          const SizedBox(width: AppSizes.md),
+          const Icon(Icons.music_note_outlined, color: AppColors.textSecondary, size: 20),
+          const SizedBox(width: AppSizes.sm),
+          if (tracks.isEmpty)
+            Expanded(
+              child: InkWell(
+                onTap: onAdd,
+                child: const Text('Добавить аудио', style: TextStyle(color: AppColors.textSecondary)),
+              ),
+            )
+          else
+            Expanded(
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final t in tracks)
+                    InkWell(
+                      onTap: () => _openVolumeSheet(context, t),
+                      borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: AppSizes.xs),
+                        padding: const EdgeInsets.symmetric(horizontal: AppSizes.sm, vertical: 6),
+                        decoration: BoxDecoration(color: AppColors.surfaceElevated, borderRadius: BorderRadius.circular(AppSizes.radiusSm)),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(t.volume == 0 ? Icons.volume_off : Icons.graphic_eq, color: AppColors.textSecondary, size: 14),
+                            const SizedBox(width: 4),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 100),
+                              child: Text(t.fileName, style: const TextStyle(color: Colors.white70, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  InkWell(
+                    onTap: onAdd,
+                    borderRadius: BorderRadius.circular(AppSizes.radiusSm),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(color: const Color(0xFF232323), borderRadius: BorderRadius.circular(AppSizes.radiusSm)),
+                      child: const Icon(Icons.add, color: Colors.white70, size: 16),
                     ),
                   ),
                 ],

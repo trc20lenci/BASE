@@ -1,8 +1,10 @@
 import 'dart:io';
+import '../../domain/entities/audio_track_entity.dart';
 import '../../domain/entities/clip_type.dart';
 import '../../domain/entities/editor_timeline_entity.dart';
 import '../../domain/repositories/timeline_repository.dart';
 import '../datasources/timeline_remote_data_source.dart';
+import '../models/audio_track_model.dart';
 import '../models/media_overlay_model.dart';
 import '../models/text_overlay_model.dart';
 import '../models/timeline_clip_model.dart';
@@ -23,6 +25,7 @@ class TimelineRepositoryImpl implements TimelineRepository {
     // Ключи в Postgres — snake_case (см. TimelineRemoteDataSource.saveTimeline).
     final textsRaw = (data['text_overlays'] as List?) ?? [];
     final overlaysRaw = (data['overlays'] as List?) ?? [];
+    final audioRaw = (data['audio_tracks'] as List?) ?? [];
 
     return EditorTimelineEntity(
       projectId: projectId,
@@ -37,6 +40,10 @@ class TimelineRepositoryImpl implements TimelineRepository {
           .map((o) => MediaOverlayModel.fromMap(Map<String, dynamic>.from(o as Map)))
           .toList()
         ..sort((a, b) => a.order.compareTo(b.order)),
+      audioTracks: audioRaw
+          .map((a) => AudioTrackModel.fromMap(Map<String, dynamic>.from(a as Map)))
+          .toList()
+        ..sort((a, b) => a.order.compareTo(b.order)),
     );
   }
 
@@ -47,6 +54,7 @@ class TimelineRepositoryImpl implements TimelineRepository {
       clips: timeline.clips.map((c) => TimelineClipModel.fromEntity(c)).toList(),
       textOverlays: timeline.textOverlays.map((t) => TextOverlayModel.fromEntity(t)).toList(),
       overlays: timeline.overlays.map((o) => MediaOverlayModel.fromEntity(o)).toList(),
+      audioTracks: timeline.audioTracks.map((a) => AudioTrackModel.fromEntity(a)).toList(),
     );
   }
 
@@ -63,6 +71,23 @@ class TimelineRepositoryImpl implements TimelineRepository {
       projectId: projectId,
       clipId: clipId,
       type: type,
+      file: file,
+    );
+  }
+
+  @override
+  Future<String> uploadAudioTrack({
+    required String ownerId,
+    required String projectId,
+    required String trackId,
+    required String extension,
+    required File file,
+  }) {
+    return _remote.uploadAudioTrack(
+      ownerId: ownerId,
+      projectId: projectId,
+      trackId: trackId,
+      extension: extension,
       file: file,
     );
   }

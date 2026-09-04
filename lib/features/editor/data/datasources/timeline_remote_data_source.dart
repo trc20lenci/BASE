@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import '../../../../core/constants/supabase_constants.dart';
 import '../../domain/entities/clip_type.dart';
+import '../models/audio_track_model.dart';
 import '../models/media_overlay_model.dart';
 import '../models/text_overlay_model.dart';
 import '../models/timeline_clip_model.dart';
@@ -34,6 +35,7 @@ class TimelineRemoteDataSource {
     required List<TimelineClipModel> clips,
     required List<TextOverlayModel> textOverlays,
     required List<MediaOverlayModel> overlays,
+    required List<AudioTrackModel> audioTracks,
   }) async {
     final now = DateTime.now().toIso8601String();
 
@@ -42,6 +44,7 @@ class TimelineRemoteDataSource {
       'clips': clips.map((c) => c.toMap()).toList(),
       'text_overlays': textOverlays.map((t) => t.toMap()).toList(),
       'overlays': overlays.map((o) => o.toMap()).toList(),
+      'audio_tracks': audioTracks.map((a) => a.toMap()).toList(),
       'updated_at': now,
     });
 
@@ -73,6 +76,28 @@ class TimelineRemoteDataSource {
   }) async {
     final extension = type == ClipType.video ? 'mp4' : 'jpg';
     final fileName = '$clipId.$extension';
+    final path = SupabaseConstants.projectMediaPath(ownerId, projectId, fileName);
+
+    await _client.storage.from(SupabaseConstants.projectMediaBucket).upload(
+          path,
+          file,
+          fileOptions: const sb.FileOptions(upsert: true),
+        );
+
+    return _client.storage.from(SupabaseConstants.projectMediaBucket).getPublicUrl(path);
+  }
+
+  /// Загружает аудиофайл (пользовательская дорожка) в тот же бакет
+  /// `project-media`, что и медиа клипов — путь включает расширение
+  /// исходного файла, чтобы плееры могли определить формат.
+  Future<String> uploadAudioTrack({
+    required String ownerId,
+    required String projectId,
+    required String trackId,
+    required String extension,
+    required File file,
+  }) async {
+    final fileName = '$trackId.$extension';
     final path = SupabaseConstants.projectMediaPath(ownerId, projectId, fileName);
 
     await _client.storage.from(SupabaseConstants.projectMediaBucket).upload(

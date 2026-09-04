@@ -23,6 +23,7 @@ dependencies:
   image_picker: ^1.1.2
   photo_manager: ^3.6.4
   video_player: ^2.9.2
+  file_picker: ^8.1.2
 
   # Локальный доступ к файлам проекта / экспорт в галерею
   path_provider: ^2.1.4
