@@ -1,18 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../editor/domain/entities/editor_timeline_entity.dart';
-import '../../data/services/unimplemented_export_engine.dart';
+import '../../../project/domain/entities/project_format.dart';
+import '../../data/services/ffmpeg_export_engine.dart';
 import '../../domain/entities/export_progress.dart';
 import '../../domain/entities/export_settings.dart';
 import '../../domain/repositories/video_export_engine.dart';
 import '../../domain/usecases/render_video_usecase.dart';
 import '../../domain/usecases/save_video_to_gallery_usecase.dart';
 
-/// Точка подключения реального движка рендера — см. подробный комментарий
-/// в VideoExportEngine. Замените UnimplementedExportEngine() на реальную
-/// реализацию, когда движок будет готов; весь остальной код (usecases,
-/// UI, сохранение в галерею) менять не придётся.
+/// Точка подключения движка рендера. По умолчанию — FfmpegExportEngine
+/// (см. комментарий в самом файле про выбор ffmpeg_kit_flutter_new_video
+/// и его ограничения). При необходимости временно отключить рендер —
+/// замените на UnimplementedExportEngine().
 final videoExportEngineProvider = Provider<VideoExportEngine>((ref) {
-  return const UnimplementedExportEngine();
+  return const FfmpegExportEngine();
 });
 
 final renderVideoUseCaseProvider = Provider<RenderVideoUseCase>((ref) {
@@ -31,12 +32,14 @@ class ExportController extends StateNotifier<ExportProgress> {
 
   Future<void> exportAndSave({
     required EditorTimelineEntity timeline,
+    required ProjectFormat format,
     required ExportSettings settings,
   }) async {
     state = const ExportProgress(status: ExportStatus.rendering, progress: 0);
     try {
       final file = await _render(
         timeline: timeline,
+        format: format,
         settings: settings,
         onProgress: (p) => state = state.copyWith(progress: p),
       );

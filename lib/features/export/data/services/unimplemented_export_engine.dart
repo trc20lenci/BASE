@@ -1,27 +1,27 @@
 import 'dart:io';
 import '../../../editor/domain/entities/editor_timeline_entity.dart';
+import '../../../project/domain/entities/project_format.dart';
 import '../../domain/entities/export_settings.dart';
 import '../../domain/repositories/video_export_engine.dart';
 
-/// Реализация "по умолчанию": явно сообщает, что нативный движок рендера
-/// ещё не подключён, вместо того чтобы падать невнятной ошибкой глубоко
-/// в стеке вызовов. Замените на реальную реализацию (см. комментарий в
-/// VideoExportEngine) когда будет выбрана библиотека кодирования видео.
+/// Реализация "по умолчанию" — на случай, если понадобится временно
+/// отключить FfmpegExportEngine (например, для сборки без нативных
+/// FFmpeg-библиотек). Явно сообщает причину вместо падения с невнятной
+/// ошибкой глубоко в стеке.
 class UnimplementedExportEngine implements VideoExportEngine {
   const UnimplementedExportEngine();
 
   @override
   Future<File> render({
     required EditorTimelineEntity timeline,
+    required ProjectFormat format,
     required ExportSettings settings,
     required void Function(double progress) onProgress,
   }) {
     throw UnimplementedError(
-      'Движок рендера видео ещё не подключён. См. комментарий в '
-      'VideoExportEngine — нужно реализовать этот интерфейс конкретной '
-      'библиотекой кодирования (актуальный форк ffmpeg-kit или нативный '
-      'MediaCodec/AVFoundation-пайплайн) и подставить в '
-      'videoExportEngineProvider.',
+      'Движок рендера видео отключён. Подставьте FfmpegExportEngine() в '
+      'videoExportEngineProvider (lib/features/export/presentation/providers/'
+      'export_providers.dart).',
     );
   }
 }

@@ -12,8 +12,8 @@ import 'package:equatable/equatable.dart';
 class CanvasTransform extends Equatable {
   final double scale;
   final double rotation; // радианы
-  final double dx; // смещение центра относительно центра холста, в px
-  final double dy;
+  final double dx; // смещение центра по X, доля ширины холста (0.1 = 10% ширины вправо)
+  final double dy; // смещение центра по Y, доля высоты холста
 
   final double cropLeft; // 0..1
   final double cropTop;

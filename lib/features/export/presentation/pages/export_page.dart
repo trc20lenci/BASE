@@ -1,8 +1,11 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../editor/presentation/providers/editor_controller.dart';
+import '../../../project/domain/entities/project_format.dart';
+import '../../../project/presentation/providers/project_providers.dart';
 import '../../domain/entities/export_progress.dart';
 import '../../domain/entities/export_quality.dart';
 import '../../domain/entities/export_settings.dart';
@@ -42,7 +45,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
 
   void _soon() => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скоро')));
 
-  Future<void> _handleExport(EditorControllerParams params) async {
+  Future<void> _handleExport(EditorControllerParams params, ProjectFormat format) async {
     final timeline = ref.read(editorControllerProvider(params)).timeline;
     final settings = ExportSettings(
       quality: _quality,
@@ -51,7 +54,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
       enableAiUpscale: _aiUpscale,
       enableSmartHdr: _smartHdr,
     );
-    await ref.read(exportControllerProvider.notifier).exportAndSave(timeline: timeline, settings: settings);
+    await ref.read(exportControllerProvider.notifier).exportAndSave(timeline: timeline, format: format, settings: settings);
   }
 
   double get _estimatedSizeMb {
@@ -71,6 +74,9 @@ class _ExportPageState extends ConsumerState<ExportPage> {
       return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator()));
     }
     final params = EditorControllerParams(projectId: widget.projectId, ownerId: userId);
+    final projects = ref.watch(userProjectsProvider).value ?? [];
+    final project = projects.where((p) => p.id == widget.projectId).firstOrNull;
+    final format = project?.format ?? ProjectFormat.ratio9x16;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -93,7 +99,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
                   const SizedBox(width: AppSizes.xs),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF14C7C1), foregroundColor: Colors.black),
-                    onPressed: isBusy ? null : () => _handleExport(params),
+                    onPressed: isBusy ? null : () => _handleExport(params, format),
                     child: isBusy
                         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Text('Экспорт'),

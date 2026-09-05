@@ -10,9 +10,16 @@ class TextOverlayEntity extends Equatable {
   final double fontSize;
   final Color color;
 
-  /// Позиция центра текста относительно центра холста, в px.
+  /// Позиция центра текста: доля ширины/высоты холста (не пиксели!) —
+  /// это резолюшн-независимое представление, важное для экспорта в
+  /// разрешение, отличное от превью на экране (см. CanvasStage).
   final double dx;
   final double dy;
+
+  /// Размер шрифта хранится в "опорных" единицах при ширине холста
+  /// [fontSizeReferenceCanvasWidth] — реальный размер на экране/при
+  /// экспорте = fontSize * (реальнаяШиринаХолста / referenceWidth).
+  static const double fontSizeReferenceCanvasWidth = 400.0;
 
   const TextOverlayEntity({
     required this.id,

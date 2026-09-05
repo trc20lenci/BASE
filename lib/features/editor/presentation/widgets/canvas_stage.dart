@@ -190,6 +190,7 @@ class _CanvasStageState extends ConsumerState<CanvasStage> {
                             key: ValueKey(mediaOverlay.id),
                             overlay: mediaOverlay,
                             isSelected: state.selectedType == SelectedElementType.overlay && state.selectedId == mediaOverlay.id,
+                            canvasSize: Size(canvasWidth, canvasHeight),
                             onTap: () => controller.selectOverlay(mediaOverlay.id),
                             onGestureStart: controller.beginGesture,
                             onGestureEnd: controller.commitGesture,
@@ -344,8 +345,8 @@ class _ClipLayerState extends State<_ClipLayer> {
     final newTransform = t.copyWith(
       scale: (_startScale * details.scale).clamp(0.2, 5.0),
       rotation: _startRotation + details.rotation,
-      dx: _startOffset.dx + details.focalPointDelta.dx,
-      dy: _startOffset.dy + details.focalPointDelta.dy,
+      dx: _startOffset.dx + details.focalPointDelta.dx / widget.canvasSize.width,
+      dy: _startOffset.dy + details.focalPointDelta.dy / widget.canvasSize.height,
     );
     widget.onTransformChanged(newTransform);
   }
@@ -388,7 +389,7 @@ class _ClipLayerState extends State<_ClipLayer> {
       child: Transform(
         alignment: Alignment.center,
         transform: Matrix4.identity()
-          ..translateByDouble(t.dx, t.dy, 0, 1)
+          ..translateByDouble(t.dx * widget.canvasSize.width, t.dy * widget.canvasSize.height, 0, 1)
           ..rotateZ(t.rotation)
           ..scaleByDouble(t.scale, t.scale, t.scale, 1),
         child: Stack(
@@ -439,10 +440,15 @@ class _TextLayerState extends State<_TextLayer> {
   @override
   Widget build(BuildContext context) {
     final o = widget.overlay;
+    final canvasSize = widget.canvasSize;
+    // Реальный размер шрифта масштабируется от "опорной" ширины холста —
+    // см. TextOverlayEntity.fontSizeReferenceCanvasWidth. Это резолюшн-
+    // независимое представление, важное при экспорте в другое разрешение.
+    final realFontSize = o.fontSize * (canvasSize.width / TextOverlayEntity.fontSizeReferenceCanvasWidth);
 
     return Positioned(
-      left: widget.canvasSize.width / 2 + o.dx - 150,
-      top: widget.canvasSize.height / 2 + o.dy - 20,
+      left: canvasSize.width / 2 + o.dx * canvasSize.width - 150,
+      top: canvasSize.height / 2 + o.dy * canvasSize.height - 20,
       width: 300,
       child: GestureDetector(
         onTap: widget.onTap,
@@ -453,7 +459,7 @@ class _TextLayerState extends State<_TextLayer> {
           _accumulatedDelta = Offset.zero;
         },
         onPanUpdate: (details) {
-          _accumulatedDelta += details.delta;
+          _accumulatedDelta += Offset(details.delta.dx / canvasSize.width, details.delta.dy / canvasSize.height);
           widget.onMoved(_dragStart.dx + _accumulatedDelta.dx, _dragStart.dy + _accumulatedDelta.dy);
         },
         onPanEnd: (_) => widget.onGestureEnd(),
@@ -466,7 +472,7 @@ class _TextLayerState extends State<_TextLayer> {
           child: Text(
             o.text,
             textAlign: TextAlign.center,
-            style: EditorTextStyleConstants.style(fontSize: o.fontSize, color: o.color),
+            style: EditorTextStyleConstants.style(fontSize: realFontSize, color: o.color),
           ),
         ),
       ),
@@ -481,6 +487,7 @@ class _TextLayerState extends State<_TextLayer> {
 class _OverlayLayer extends StatefulWidget {
   final MediaOverlayEntity overlay;
   final bool isSelected;
+  final Size canvasSize;
   final VoidCallback onTap;
   final VoidCallback onGestureStart;
   final VoidCallback onGestureEnd;
@@ -490,6 +497,7 @@ class _OverlayLayer extends StatefulWidget {
     super.key,
     required this.overlay,
     required this.isSelected,
+    required this.canvasSize,
     required this.onTap,
     required this.onGestureStart,
     required this.onGestureEnd,
@@ -502,6 +510,12 @@ class _OverlayLayer extends StatefulWidget {
 
 class _OverlayLayerState extends State<_OverlayLayer> {
   VideoPlayerController? _videoController;
+
+  /// Базовый размер наложения при scale=1.0 — доля ширины холста (а не
+  /// фиксированные пиксели), чтобы масштаб оставался резолюшн-независимым
+  /// между превью и экспортом (см. FfmpegExportEngine, использует то же
+  /// значение 0.4).
+  static const double baseSizeFraction = 0.4;
 
   @override
   void initState() {
@@ -545,21 +559,22 @@ class _OverlayLayerState extends State<_OverlayLayer> {
     widget.onTransformChanged(t.copyWith(
       scale: (_startScale * details.scale).clamp(0.1, 3.0),
       rotation: _startRotation + details.rotation,
-      dx: _startOffset.dx + details.focalPointDelta.dx,
-      dy: _startOffset.dy + details.focalPointDelta.dy,
+      dx: _startOffset.dx + details.focalPointDelta.dx / widget.canvasSize.width,
+      dy: _startOffset.dy + details.focalPointDelta.dy / widget.canvasSize.height,
     ));
   }
 
   @override
   Widget build(BuildContext context) {
     final t = widget.overlay.transform;
+    final baseSize = widget.canvasSize.width * baseSizeFraction;
 
     Widget media;
     if (widget.overlay.type == ClipType.video) {
       final vc = _videoController;
       media = (vc != null && vc.value.isInitialized)
-          ? SizedBox(width: 160, height: 160 / vc.value.aspectRatio, child: VideoPlayer(vc))
-          : const SizedBox(width: 160, height: 160, child: ColoredBox(color: Colors.black26));
+          ? SizedBox(width: baseSize, height: baseSize / vc.value.aspectRatio, child: VideoPlayer(vc))
+          : SizedBox(width: baseSize, height: baseSize, child: const ColoredBox(color: Colors.black26));
     } else {
       final path = widget.overlay.localPath;
       final image = path != null
@@ -567,7 +582,7 @@ class _OverlayLayerState extends State<_OverlayLayer> {
           : (widget.overlay.remoteUrl != null
               ? Image.network(widget.overlay.remoteUrl!, fit: BoxFit.cover)
               : const ColoredBox(color: Colors.black26));
-      media = SizedBox(width: 160, height: 160, child: image);
+      media = SizedBox(width: baseSize, height: baseSize, child: image);
     }
 
     return Center(
@@ -578,7 +593,7 @@ class _OverlayLayerState extends State<_OverlayLayer> {
         child: Transform(
           alignment: Alignment.center,
           transform: Matrix4.identity()
-            ..translateByDouble(t.dx, t.dy, 0, 1)
+            ..translateByDouble(t.dx * widget.canvasSize.width, t.dy * widget.canvasSize.height, 0, 1)
             ..rotateZ(t.rotation)
             ..scaleByDouble(t.scale, t.scale, t.scale, 1),
           child: Opacity(

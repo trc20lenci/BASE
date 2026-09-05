@@ -16,6 +16,13 @@ dependencies:
   # Backend — Supabase (Auth, PostgreSQL Database, Storage)
   supabase_flutter: ^2.8.0
 
+  # Рендер финального MP4 — см. VideoExportEngine/FfmpegExportEngine.
+  # Выбран "video"-флейвор (dav1d/libvpx/fontconfig/freetype — декод AV1/
+  # VP9/WebP + поддержка drawtext), БЕЗ GPL-кодеков (нет libx264/libx265).
+  # Кодирование видео поэтому идёт через libvpx-vp9 (LGPL, включён в этот
+  # флейвор), а не H.264 — см. подробности в FfmpegExportEngine.
+  ffmpeg_kit_flutter_new_video: ^2.5.2
+
   # Навигация
   go_router: ^14.2.7
 
